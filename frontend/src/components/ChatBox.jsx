@@ -2,16 +2,13 @@ import { useState } from 'react'
 import { Container, Form, Button, Card, Spinner, Alert } from 'react-bootstrap'
 import { useChat } from '../hooks/useChat'
 
-const ChatBox = () => {
+const ChatBox = ({ context }) => {
   const [inputMessage, setInputMessage] = useState('')
   const { messages, isLoading, error, sendMessage, clearChat } = useChat()
-
   const handleSubmit = (e) => {
     e.preventDefault()
-
     if (!inputMessage.trim()) return
-
-    sendMessage(inputMessage)
+    sendMessage(inputMessage, context) // ← Aggiungi context
     setInputMessage('')
   }
 

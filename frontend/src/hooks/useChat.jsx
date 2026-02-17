@@ -2,63 +2,52 @@ import { useState } from 'react'
 import { chatService } from '../services/chatService'
 
 /**
- * Custom hook per gestione stato chat
- * Versione con Promises
+ * Hook per gestione stato chat
  */
 export const useChat = () => {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  /**
-   * Invia messaggio al chatbot
-   */
-  const sendMessage = (userMessage) => {
+  const addMessage = (text, sender) => {
+    const newMessage = {
+      id: Date.now(),
+      text,
+      sender,
+      timestamp: new Date().toLocaleTimeString('it-IT', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    }
+    setMessages((prev) => [...prev, newMessage])
+    return newMessage
+  }
+
+  const sendMessage = (userMessage, context = null) => {
+    if (!userMessage.trim()) return
+
     setIsLoading(true)
     setError(null)
 
-    // Aggiungi messaggio utente
-    const userMsg = {
-      id: Date.now(),
-      text: userMessage,
-      sender: 'user',
-      timestamp: new Date(),
-    }
-    setMessages((prev) => [...prev, userMsg])
+    addMessage(userMessage, 'user')
 
-    // Chiamata API con .then/.catch
-    chatService
-      .sendMessage(userMessage)
+    const apiCall = context
+      ? chatService.sendMessageWithContext(userMessage, context)
+      : chatService.sendMessage(userMessage)
+
+    apiCall
       .then((response) => {
-        // Aggiungi risposta bot
-        const botMsg = {
-          id: Date.now() + 1,
-          text: response.response,
-          sender: 'bot',
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, botMsg])
+        addMessage(response.response, 'bot')
       })
       .catch((err) => {
         setError(err.message)
-
-        // Messaggio errore visibile in chat
-        const errorMsg = {
-          id: Date.now() + 1,
-          text: `Errore: ${err.message}`,
-          sender: 'system',
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, errorMsg])
+        addMessage('Errore: ' + err.message, 'system')
       })
       .finally(() => {
         setIsLoading(false)
       })
   }
 
-  /**
-   * Reset chat
-   */
   const clearChat = () => {
     setMessages([])
     setError(null)
