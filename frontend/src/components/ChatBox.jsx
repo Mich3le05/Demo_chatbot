@@ -31,6 +31,7 @@ const ChatBox = ({ context: appContext }) => {
 
   return (
     <Card className="bg2 text-light shadow-lg border-0 rounded-3 d-flex flex-column ">
+    <Card className="bg2 text-light shadow-lg border-0 rounded-3 d-flex flex-column">
       <Card.Header className="d-flex align-items-center justify-content-between py-3">
         <span className="fw-bold fs-4">Chat OCF</span>
         <div>
@@ -65,7 +66,11 @@ const ChatBox = ({ context: appContext }) => {
         onChange={(e) => uploadDocument(e.target.files[0])}
       />
 
-      <Card.Body ref={scrollRef} className="p-4 flex-grow-1 overflow-auto">
+      <Card.Body
+        ref={scrollRef}
+        className="p-4 flex-grow-1 overflow-auto"
+        style={{ height: '600px' }}
+      >
         {error && <Alert variant="danger">{error}</Alert>}
 
         {messages.map((msg) => (
