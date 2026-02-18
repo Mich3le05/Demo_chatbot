@@ -30,7 +30,6 @@ const ChatBox = ({ context: appContext }) => {
   }
 
   return (
-    <Card className="bg2 text-light shadow-lg border-0 rounded-3 d-flex flex-column ">
     <Card className="bg2 text-light shadow-lg border-0 rounded-3 d-flex flex-column">
       <Card.Header className="d-flex align-items-center justify-content-between py-3">
         <span className="fw-bold fs-4">Chat OCF</span>
