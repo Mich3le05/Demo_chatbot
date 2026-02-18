@@ -20,6 +20,7 @@ const ChatBox = ({ context: appContext }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    // Blocca invio solo se non c'è testo E non c'è documento
     if (!inputMessage.trim() && !uploadedDocument) return
 
     const finalContext = uploadedDocument?.extractedText || appContext
@@ -29,13 +30,13 @@ const ChatBox = ({ context: appContext }) => {
   }
 
   return (
-    <Card className="bg2 text-light shadow-lg border-0">
+    <Card className="bg2 text-light shadow-lg border-0 rounded-3 d-flex flex-column ">
       <Card.Header className="d-flex align-items-center justify-content-between py-3">
         <span className="fw-bold fs-4">Chat OCF</span>
         <div>
           <Button
             variant="outline-light"
-            className="bg3 border-0 shadow-sm me-3"
+            className="bg3 border-0 shadow-sm me-3 px-3 py-2 rounded-3"
             size="sm"
             onClick={() => fileInputRef.current.click()}
             disabled={isUploading}
@@ -48,7 +49,7 @@ const ChatBox = ({ context: appContext }) => {
           </Button>
           <Button
             variant="outline-light"
-            className="bg3 border-0 shadow-sm"
+            className="bg3 border-0 shadow-sm px-3 py-2 rounded-3"
             size="sm"
             onClick={clearChat}
           >
@@ -64,13 +65,7 @@ const ChatBox = ({ context: appContext }) => {
         onChange={(e) => uploadDocument(e.target.files[0])}
       />
 
-      <Card.Body
-        ref={scrollRef}
-        style={{
-          overflowY: 'auto',
-        }}
-        className="p-4"
-      >
+      <Card.Body ref={scrollRef} className="p-4 flex-grow-1 overflow-auto">
         {error && <Alert variant="danger">{error}</Alert>}
 
         {messages.map((msg) => (
@@ -81,8 +76,8 @@ const ChatBox = ({ context: appContext }) => {
             <div
               className={`p-3 ${
                 msg.sender === 'user'
-                  ? 'bg-primary text-white rounded-start rounded-top'
-                  : 'bg-light text-dark rounded-end rounded-top'
+                  ? 'bg-success text-white fw-semibold rounded-start rounded-top'
+                  : 'bg-light fw-semibold text-dark rounded-end rounded-top'
               }`}
               style={{
                 maxWidth: '85%',
@@ -105,22 +100,22 @@ const ChatBox = ({ context: appContext }) => {
         )}
       </Card.Body>
 
-      <Card.Footer className=" p-3">
+      <Card.Footer className="p-3 border-0 bg2">
         {uploadedDocument && (
           <div className="mb-2 d-flex align-items-center animate-fade-in">
-            <Badge bg="info" className="p-2 d-flex align-items-center gap-2">
-              {uploadedDocument.fileName}
+            <Badge bg="success" className="p-2 d-flex align-items-center gap-2">
+              <span>{uploadedDocument.fileName}</span>
               <span
-                style={{ cursor: 'pointer', fontWeight: 'bold' }}
+                style={{ cursor: 'pointer', lineHeight: 1, fontSize: '1.1rem' }}
                 onClick={clearDocument}
+                className="fw-bold"
               >
-                {' '}
-                &times;{' '}
+                &times;
               </span>
             </Badge>
-            <small className="ms-2 text-info opacity-75">
+            <medium className="ms-2 text-success opacity-75">
               Documento caricato
-            </small>
+            </medium>
           </div>
         )}
 
@@ -128,7 +123,7 @@ const ChatBox = ({ context: appContext }) => {
           <Form.Group className="d-flex gap-2">
             <Form.Control
               type="text"
-              className="text-light bg3 border-0 rounded-5"
+              className="text-light bg3 border-0 rounded-4 chat-input shadow-md px-3"
               placeholder="Fai una domanda"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
@@ -137,10 +132,20 @@ const ChatBox = ({ context: appContext }) => {
             <Button
               type="submit"
               variant="outline-success"
-              disabled={
+              className="bg3 border-0 py-2 px-3 rounded-4 shadow-md"
+              style={{
+                opacity:
+                  isLoading || (!inputMessage.trim() && !uploadedDocument)
+                    ? 0.55
+                    : 1,
+                cursor:
+                  isLoading || (!inputMessage.trim() && !uploadedDocument)
+                    ? 'not-allowed'
+                    : 'pointer',
+              }}
+              aria-disabled={
                 isLoading || (!inputMessage.trim() && !uploadedDocument)
               }
-              className="bg3 border-0 py-2 px-3"
             >
               Invia
             </Button>

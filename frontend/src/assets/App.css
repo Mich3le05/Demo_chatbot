@@ -9,3 +9,17 @@
 .bg3 {
   background-color: #4e4e4e;
 }
+
+/* Barra di domanda ChatBot */
+
+.chat-input:focus {
+  background-color: #4e4e4e;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: white !important;
+  outline: none;
+}
+
+.chat-input::placeholder {
+  padding-left: 5px;
+}
