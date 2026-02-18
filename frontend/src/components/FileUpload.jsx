@@ -63,11 +63,10 @@ const FileUpload = ({ onDocumentProcessed }) => {
   return (
     <Card className="mb-3">
       <Card.Header>
-        <h5 className="mb-0">📄 Carica Documento</h5>
+        <h5 className="mb-0">Carica Documento</h5>
       </Card.Header>
 
       <Card.Body>
-        {/* Drop Zone */}
         {!uploadedDocument && (
           <div
             onDrop={handleDrop}
@@ -93,7 +92,6 @@ const FileUpload = ({ onDocumentProcessed }) => {
               </div>
             ) : (
               <div>
-                <div className="fs-1">📁</div>
                 <p className="mb-1">
                   <strong>Trascina un file qui</strong> o clicca per
                   selezionarlo
@@ -104,7 +102,6 @@ const FileUpload = ({ onDocumentProcessed }) => {
           </div>
         )}
 
-        {/* Input nascosto */}
         <input
           ref={fileInputRef}
           type="file"
@@ -113,7 +110,6 @@ const FileUpload = ({ onDocumentProcessed }) => {
           style={{ display: 'none' }}
         />
 
-        {/* Errore Upload */}
         {uploadError && (
           <Alert
             variant="danger"
@@ -125,7 +121,6 @@ const FileUpload = ({ onDocumentProcessed }) => {
           </Alert>
         )}
 
-        {/* Documento Caricato */}
         {uploadedDocument && (
           <div className="mt-2">
             <Alert variant="success" className="mb-2">
