@@ -1,8 +1,7 @@
+// Service per comunicazione con il chatbot AI
+
 import http from '../utils/httpClient'
 
-/**
- * Service per comunicazione con il chatbot AI
- */
 export const chatService = {
   sendMessage: (message) => {
     return http.post('/chat/message', { message })

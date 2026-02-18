@@ -1,9 +1,8 @@
+// Hook per gestione upload documenti
+
 import { useState } from 'react'
 import { documentService } from '../services/documentService'
 
-/**
- * Hook per gestione upload documenti
- */
 export const useDocumentUpload = () => {
   const [uploadedDocument, setUploadedDocument] = useState(null)
   const [isUploading, setIsUploading] = useState(false)

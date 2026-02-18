@@ -1,82 +1,147 @@
-import { useState } from 'react'
-import { Form, Button, Card, Spinner, Alert } from 'react-bootstrap'
+import { useState, useRef, useEffect } from 'react'
+import { Form, Button, Card, Spinner, Alert, Badge } from 'react-bootstrap'
 import { useChat } from '../hooks/useChat'
+import { useDocumentUpload } from '../hooks/useDocumentUpload'
 
-const ChatBox = ({ context }) => {
+const ChatBox = ({ context: appContext }) => {
   const [inputMessage, setInputMessage] = useState('')
+  const scrollRef = useRef(null)
+  const fileInputRef = useRef(null)
+
   const { messages, isLoading, error, sendMessage, clearChat } = useChat()
+  const { uploadedDocument, isUploading, uploadDocument, clearDocument } =
+    useDocumentUpload()
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages])
+
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!inputMessage.trim()) return
-    sendMessage(inputMessage, context)
+    if (!inputMessage.trim() && !uploadedDocument) return
+
+    const finalContext = uploadedDocument?.extractedText || appContext
+
+    sendMessage(inputMessage, finalContext)
     setInputMessage('')
   }
 
   return (
-    <Card className="bg2  text-light">
-      <Card.Header className="d-flex align-items-center">
-        <Button variant="outline-light" className="bg3 me-3 border-0" size="sm">
-          Carica documento
-        </Button>
-        <Button
-          variant="outline-light"
-          className="bg3 border-0"
-          size="sm"
-          onClick={clearChat}
-        >
-          Pulisci Chat
-        </Button>
+    <Card className="bg2 text-light shadow-lg border-0">
+      <Card.Header className="d-flex align-items-center justify-content-between py-3">
+        <span className="fw-bold fs-4">Chat OCF</span>
+        <div>
+          <Button
+            variant="outline-light"
+            className="bg3 border-0 shadow-sm me-3"
+            size="sm"
+            onClick={() => fileInputRef.current.click()}
+            disabled={isUploading}
+          >
+            {isUploading ? (
+              <Spinner animation="border" size="sm" />
+            ) : (
+              'Carica documento'
+            )}
+          </Button>
+          <Button
+            variant="outline-light"
+            className="bg3 border-0 shadow-sm"
+            size="sm"
+            onClick={clearChat}
+          >
+            Pulisci chat
+          </Button>
+        </div>
       </Card.Header>
 
-      <Card.Body style={{ height: '500px', overflowY: 'auto' }}>
-        {error && (
-          <Alert variant="danger" dismissible>
-            {error}
-          </Alert>
-        )}
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        onChange={(e) => uploadDocument(e.target.files[0])}
+      />
+
+      <Card.Body
+        ref={scrollRef}
+        style={{
+          overflowY: 'auto',
+        }}
+        className="p-4"
+      >
+        {error && <Alert variant="danger">{error}</Alert>}
 
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`mb-3 d-flex ${
-              msg.sender === 'user'
-                ? 'justify-content-end'
-                : 'justify-content-start'
-            }`}
+            className={`mb-3 d-flex ${msg.sender === 'user' ? 'justify-content-end' : 'justify-content-start'}`}
           >
             <div
-              className={`p-3 rounded ${
+              className={`p-3 ${
                 msg.sender === 'user'
-                  ? 'bg-primary text-white'
-                  : msg.sender === 'bot'
-                    ? 'bg-light'
-                    : 'bg-warning'
+                  ? 'bg-primary text-white rounded-start rounded-top'
+                  : 'bg-light text-dark rounded-end rounded-top'
               }`}
-              style={{ maxWidth: '70%' }}
+              style={{
+                maxWidth: '85%',
+                borderRadius: '18px',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+              }}
             >
+              <div className="small fw-bold mb-1" style={{ opacity: 0.7 }}>
+                {msg.sender === 'user' ? 'Tu' : 'Assistente'}
+              </div>
               {msg.text}
             </div>
           </div>
         ))}
 
         {isLoading && (
-          <div className="text-center">
-            <Spinner animation="border" variant="primary" />
+          <div className="text-start mb-3">
+            <Spinner animation="grow" variant="light" size="sm" />
           </div>
         )}
       </Card.Body>
 
-      <Card.Footer>
+      <Card.Footer className=" p-3">
+        {uploadedDocument && (
+          <div className="mb-2 d-flex align-items-center animate-fade-in">
+            <Badge bg="info" className="p-2 d-flex align-items-center gap-2">
+              {uploadedDocument.fileName}
+              <span
+                style={{ cursor: 'pointer', fontWeight: 'bold' }}
+                onClick={clearDocument}
+              >
+                {' '}
+                &times;{' '}
+              </span>
+            </Badge>
+            <small className="ms-2 text-info opacity-75">
+              Documento caricato
+            </small>
+          </div>
+        )}
+
         <Form onSubmit={handleSubmit}>
           <Form.Group className="d-flex gap-2">
             <Form.Control
               type="text"
-              placeholder="Scrivi un messaggio..."
+              className="text-light bg3 border-0 rounded-5"
+              placeholder="Fai una domanda"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               disabled={isLoading}
             />
-            <Button type="submit" disabled={isLoading || !inputMessage.trim()}>
+            <Button
+              type="submit"
+              variant="outline-success"
+              disabled={
+                isLoading || (!inputMessage.trim() && !uploadedDocument)
+              }
+              className="bg3 border-0 py-2 px-3"
+            >
               Invia
             </Button>
           </Form.Group>

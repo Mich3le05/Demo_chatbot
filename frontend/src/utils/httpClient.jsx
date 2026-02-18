@@ -1,14 +1,10 @@
-/**
- * HTTP Client basato su Fetch API nativa
- * Gestisce comunicazione con backend Spring Boot
- * Versione con Promises (.then/.catch)
- */
+// HTTP Client basato su Fetch API nativa
+// Gestisce comunicazione con backend Spring Boot
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
-/**
- * Wrapper generico per fetch con gestione errori
- */
+//gestione errori
+
 const httpClient = (endpoint, options = {}) => {
   const config = {
     headers: {
@@ -30,7 +26,6 @@ const httpClient = (endpoint, options = {}) => {
           })
       }
 
-      // Parse JSON se presente
       const contentType = response.headers.get('content-type')
       if (contentType && contentType.includes('application/json')) {
         return response.json()
@@ -44,9 +39,6 @@ const httpClient = (endpoint, options = {}) => {
     })
 }
 
-/**
- * Metodi HTTP
- */
 export const http = {
   get: (endpoint, options = {}) => {
     return httpClient(endpoint, { method: 'GET', ...options })
@@ -64,7 +56,7 @@ export const http = {
     return httpClient(endpoint, {
       method: 'POST',
       body: formData,
-      headers: {}, // Nessun Content-Type, il browser lo gestisce
+      headers: {},
       ...options,
     })
   },

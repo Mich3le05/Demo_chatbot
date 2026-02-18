@@ -13,7 +13,6 @@ function App() {
   const handleDocumentProcessed = (extractedText) => {
     setContext(extractedText)
   }
-
   return (
     <Container fluid className="py-4 bg">
       <Row className="justify-content-center">
@@ -30,12 +29,10 @@ function App() {
             </h1>
           </header>
           <main>
-            <div>
-              <FileUpload onDocumentProcessed={handleDocumentProcessed} />
-            </div>
-            <div>
-              <ChatBox context={context} />
-            </div>
+            <ChatBox
+              context={context}
+              onDocumentProcessed={handleDocumentProcessed}
+            />
           </main>
           <footer className="bg2 rounded-3">
             <Footer />

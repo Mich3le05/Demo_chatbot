@@ -1,9 +1,8 @@
+// Hook per gestione stato chat
+
 import { useState } from 'react'
 import { chatService } from '../services/chatService'
 
-/**
- * Hook per gestione stato chat
- */
 export const useChat = () => {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
