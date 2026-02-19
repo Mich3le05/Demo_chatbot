@@ -1,0 +1,20 @@
+services:
+
+  tika-server:
+    image: apache/tika:2.9.2.0
+    container_name: tika-server
+    ports:
+      - "9998:9998"
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
