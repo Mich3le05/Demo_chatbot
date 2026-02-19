@@ -138,10 +138,6 @@ const ChatBox = ({ context: appContext }) => {
               variant="outline-success"
               className="bg3 border-0 py-2 px-3 rounded-4 shadow-md"
               style={{
-                opacity:
-                  isLoading || (!inputMessage.trim() && !uploadedDocument)
-                    ? 0.55
-                    : 1,
                 cursor:
                   isLoading || (!inputMessage.trim() && !uploadedDocument)
                     ? 'not-allowed'
