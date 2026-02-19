@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -32,6 +33,11 @@ public class ExceptionHandlerClass {
     @ExceptionHandler(value = RuntimeException.class)
     protected ResponseEntity<Error> runtimeException(RuntimeException ex) {
         return buildErrorResponse("Runtime error", ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(value = NoResourceFoundException.class)
+    protected ResponseEntity<Error> noResourceFound(NoResourceFoundException ex) {
+        return buildErrorResponse("Not found", ex.getMessage(), HttpStatus.NOT_FOUND);
     }
 
     @ExceptionHandler(value = Exception.class)
