@@ -1,6 +1,9 @@
 package com.chatbot.chatbot_backend.document;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -12,9 +15,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class DocumentService {
 
     @Value("${app.tika.server-url}")
@@ -27,6 +33,7 @@ public class DocumentService {
     private int chunkOverlap;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final VectorStore vectorStore;
 
     public DocumentResponse processFile(MultipartFile file) throws IOException {
         String filename = file.getOriginalFilename();
@@ -44,6 +51,10 @@ public class DocumentService {
         // 2. Chunking del testo
         List<String> chunks = chunkText(extractedText);
         log.debug("Testo diviso in {} chunk", chunks.size());
+
+        // 3. Salvataggio chunk in ChromaDB con embedding
+        saveToVectorStore(chunks, filename, file.getContentType());
+        log.debug("Salvati {} chunk in ChromaDB", chunks.size());
 
         return new DocumentResponse(
                 filename,
@@ -83,13 +94,6 @@ public class DocumentService {
         }
     }
 
-    /**
-     * Divide il testo in chunk con overlap.
-     * Esempio con chunkSize=1000 e chunkOverlap=200:
-     * chunk1: caratteri 0-1000
-     * chunk2: caratteri 800-1800
-     * chunk3: caratteri 1600-2600
-     */
     private List<String> chunkText(String text) {
         List<String> chunks = new ArrayList<>();
         int start = 0;
@@ -107,5 +111,25 @@ public class DocumentService {
         }
 
         return chunks;
+    }
+
+    /**
+     * Converte i chunk in Document objects con metadata
+     * e li salva in ChromaDB. Spring AI calcola automaticamente
+     * gli embedding tramite LM Studio.
+     */
+    private void saveToVectorStore(List<String> chunks, String filename, String contentType) {
+        List<Document> documents = chunks.stream()
+                .map(chunk -> new Document(
+                        chunk,
+                        Map.of(
+                                "source", filename,
+                                "chunkId", UUID.randomUUID().toString(),
+                                "fileType", contentType != null ? contentType : "unknown"
+                        )
+                ))
+                .toList();
+
+        vectorStore.add(documents);
     }
 }
