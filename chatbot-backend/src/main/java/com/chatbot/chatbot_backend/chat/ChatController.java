@@ -36,7 +36,10 @@ public class ChatController {
      */
     @PostMapping("/rag")
     public ResponseEntity<ChatResponse> sendMessageWithRag(@Valid @RequestBody ChatRequest request) {
-        String response = chatService.sendMessageWithRag(request.getMessage());
+        String response = chatService.sendMessageWithRag(
+                request.getMessage(),
+                request.getSourceFile()
+        );
         return ResponseEntity.ok(new ChatResponse(response, true));
     }
 }

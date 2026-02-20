@@ -22,7 +22,11 @@ const httpClient = (endpoint, options = {}) => {
           .json()
           .catch(() => ({ message: 'Errore di comunicazione con il server' }))
           .then((errorData) => {
-            throw new Error(errorData.message || `HTTP ${response.status}`)
+            throw new Error(
+              errorData.details ||
+                errorData.message ||
+                `HTTP ${response.status}`,
+            )
           })
       }
 

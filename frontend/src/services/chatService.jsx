@@ -10,4 +10,8 @@ export const chatService = {
   sendMessageWithContext: (message, context) => {
     return http.post('/chat/message', { message, context })
   },
+
+  sendMessageWithRag: (message, sourceFile) => {
+    return http.post('/chat/rag', { message, sourceFile })
+  },
 }

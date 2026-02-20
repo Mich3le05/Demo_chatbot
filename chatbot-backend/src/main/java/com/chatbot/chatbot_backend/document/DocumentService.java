@@ -7,7 +7,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
+import org.springframework.ai.vectorstore.SearchRequest;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -38,6 +38,21 @@ public class DocumentService {
     public DocumentResponse processFile(MultipartFile file) throws IOException {
         String filename = file.getOriginalFilename();
         log.debug("Processing file via Tika Server: {}", filename);
+
+        // 0. Verifica se il file è già presente in ChromaDB
+        List<Document> existing = vectorStore.similaritySearch(
+                SearchRequest.builder()
+                        .query(filename)
+                        .topK(1)
+                        .filterExpression("source == '" + filename + "'")
+                        .build()
+        );
+
+        if (!existing.isEmpty()) {
+            throw new IllegalStateException(
+                    "Il file '" + filename + "' è già presente in memoria. Rimuoverlo prima di caricarlo nuovamente."
+            );
+        }
 
         // 1. Estrazione testo via Tika
         String extractedText = extractTextViaTika(file);

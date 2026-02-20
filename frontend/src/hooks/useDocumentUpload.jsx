@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { documentService } from '../services/documentService'
+import { toast } from 'react-toastify'
 
 export const useDocumentUpload = () => {
   const [uploadedDocument, setUploadedDocument] = useState(null)
@@ -16,9 +17,11 @@ export const useDocumentUpload = () => {
       .uploadDocument(file)
       .then((response) => {
         setUploadedDocument(response)
+        toast.success('Documento caricato con successo!')
       })
       .catch((err) => {
         setUploadError(err.message)
+        toast.error(err.message)
       })
       .finally(() => {
         setIsUploading(false)

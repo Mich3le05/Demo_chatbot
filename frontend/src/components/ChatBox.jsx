@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { Form, Button, Card, Spinner, Alert, Badge } from 'react-bootstrap'
+import { Form, Button, Card, Spinner, Badge } from 'react-bootstrap'
 import { useChat } from '../hooks/useChat'
 import { useDocumentUpload } from '../hooks/useDocumentUpload'
+import Error from './Error'
+import Loading from './Loading'
+import ReactMarkdown from 'react-markdown'
 
-const ChatBox = ({ context: appContext }) => {
+const ChatBox = () => {
   const [inputMessage, setInputMessage] = useState('')
   const scrollRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -20,12 +23,12 @@ const ChatBox = ({ context: appContext }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    // Blocca invio solo se non c'è testo E non c'è documento
-    if (!inputMessage.trim() && !uploadedDocument) return
+    if (!inputMessage.trim()) return
 
-    const finalContext = uploadedDocument?.extractedText || appContext
+    const useRag = !!uploadedDocument
+    const sourceFile = uploadedDocument?.fileName || null
 
-    sendMessage(inputMessage, finalContext)
+    sendMessage(inputMessage, null, useRag, sourceFile)
     setInputMessage('')
   }
 
@@ -70,7 +73,7 @@ const ChatBox = ({ context: appContext }) => {
         className="p-4 flex-grow-1 overflow-auto"
         style={{ height: '600px' }}
       >
-        {error && <Alert variant="danger">{error}</Alert>}
+        {error && <Error message={error} />}
 
         {messages.map((msg) => (
           <div
@@ -92,16 +95,12 @@ const ChatBox = ({ context: appContext }) => {
               <div className="small fw-bold mb-1" style={{ opacity: 0.7 }}>
                 {msg.sender === 'user' ? 'Tu' : 'Assistente'}
               </div>
-              {msg.text}
+              <ReactMarkdown>{msg.text}</ReactMarkdown>
             </div>
           </div>
         ))}
 
-        {isLoading && (
-          <div className="text-start mb-3">
-            <Spinner animation="grow" variant="light" size="sm" />
-          </div>
-        )}
+        {isLoading && <Loading />}
       </Card.Body>
 
       <Card.Footer className="p-3 border-0 bg2">

@@ -1,23 +1,16 @@
-import { useState } from 'react'
-import { Col, Container, Row, Badge, Card } from 'react-bootstrap'
+import { Col, Container, Row } from 'react-bootstrap'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import ChatBox from './components/ChatBox'
-import FileUpload from './components/FileUpload'
 import logo from './assets/logo_ocf.png'
 import Footer from './components/Footer'
 import './assets/app.css'
 
 function App() {
-  const [context, setContext] = useState(null)
-
-  const handleDocumentProcessed = (extractedText) => {
-    setContext(extractedText)
-  }
   return (
     <Container fluid className="min-vh-100 py-4 bg">
       <Row className="justify-content-center">
         <Col xs={12} md={10} lg={6}>
-          <header className=" bg2 rounded-3 p-3 mb-4 d-flex align-items-center justify-content-center">
+          <header className="bg2 rounded-3 p-3 mb-4 d-flex align-items-center justify-content-center">
             <img
               src={logo}
               alt="Logo OCF"
@@ -29,10 +22,7 @@ function App() {
             </h1>
           </header>
           <main>
-            <ChatBox
-              context={context}
-              onDocumentProcessed={handleDocumentProcessed}
-            />
+            <ChatBox />
           </main>
           <footer className="bg2 rounded-3">
             <Footer />

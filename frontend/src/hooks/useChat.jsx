@@ -22,17 +22,26 @@ export const useChat = () => {
     return newMessage
   }
 
-  const sendMessage = (userMessage, context = null) => {
+  const sendMessage = (
+    userMessage,
+    context = null,
+    useRag = false,
+    sourceFile = null,
+  ) => {
     if (!userMessage.trim()) return
 
     setIsLoading(true)
     setError(null)
-
     addMessage(userMessage, 'user')
 
-    const apiCall = context
-      ? chatService.sendMessageWithContext(userMessage, context)
-      : chatService.sendMessage(userMessage)
+    let apiCall
+    if (useRag) {
+      apiCall = chatService.sendMessageWithRag(userMessage, sourceFile)
+    } else if (context) {
+      apiCall = chatService.sendMessageWithContext(userMessage, context)
+    } else {
+      apiCall = chatService.sendMessage(userMessage)
+    }
 
     apiCall
       .then((response) => {

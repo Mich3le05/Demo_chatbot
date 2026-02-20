@@ -10,4 +10,7 @@ public class ChatRequest {
     private String message;
 
     private String context;
+
+    // Nome del file su cui filtrare la ricerca RAG
+    private String sourceFile;
 }
