@@ -15,6 +15,9 @@ public class ChatController {
 
     private final ChatService chatService;
 
+    /**
+     * Chat semplice senza documenti.
+     */
     @PostMapping("/message")
     public ResponseEntity<ChatResponse> sendMessage(@Valid @RequestBody ChatRequest request) {
         String response;
@@ -26,5 +29,14 @@ public class ChatController {
 
         response = chatService.sendMessage(request.getMessage());
         return ResponseEntity.ok(new ChatResponse(response, false));
+    }
+
+    /**
+     * Chat RAG: cerca automaticamente nei documenti indicizzati.
+     */
+    @PostMapping("/rag")
+    public ResponseEntity<ChatResponse> sendMessageWithRag(@Valid @RequestBody ChatRequest request) {
+        String response = chatService.sendMessageWithRag(request.getMessage());
+        return ResponseEntity.ok(new ChatResponse(response, true));
     }
 }
