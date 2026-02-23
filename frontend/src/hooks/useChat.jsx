@@ -1,4 +1,4 @@
-// Hook per gestione stato chat
+// Hook per gestione stato chat / logica della chtat
 
 import { useState } from 'react'
 import { chatService } from '../services/chatService'
@@ -8,6 +8,7 @@ export const useChat = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
+  // FUNZIONE: aggiunge messaggio all'array
   const addMessage = (text, sender) => {
     const newMessage = {
       id: Date.now(),
@@ -22,6 +23,7 @@ export const useChat = () => {
     return newMessage
   }
 
+  // FUNZIONE PRINCIPALE: invia messaggio al backend
   const sendMessage = (
     userMessage,
     context = null,

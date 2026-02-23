@@ -60,9 +60,7 @@ public class ChatService {
         this.vectorStore = vectorStore;
     }
 
-    /**
-     * Chat generale senza documenti — nessun vincolo documentale.
-     */
+
     public String sendMessage(String message) {
         return chatClient.prompt()
                 .user(message)

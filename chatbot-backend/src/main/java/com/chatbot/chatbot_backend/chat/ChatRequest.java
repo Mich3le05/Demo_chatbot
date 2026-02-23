@@ -11,6 +11,5 @@ public class ChatRequest {
 
     private String context;
 
-    // Nome del file su cui filtrare la ricerca RAG
     private String sourceFile;
 }

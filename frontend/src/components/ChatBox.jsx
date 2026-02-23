@@ -7,7 +7,7 @@ import Loading from './Loading'
 import ReactMarkdown from 'react-markdown'
 
 const ChatBox = () => {
-  const [inputMessage, setInputMessage] = useState('')
+  const [inputMessage, setInputMessage] = useState('') // Testo digitato dall'utente
   const scrollRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -15,6 +15,7 @@ const ChatBox = () => {
   const { uploadedDocument, isUploading, uploadDocument, clearDocument } =
     useDocumentUpload()
 
+  //EFFECT: auto-scroll quando arrivano nuovi messaggi
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -145,8 +146,8 @@ const ChatBox = () => {
             />
             <Button
               type="submit"
-              variant="outline-success"
-              className="bg3 border-0 py-2 px-3 rounded-4 shadow-md chat-submit"
+              variant="success"
+              className="border-0 py-2 px-3 rounded-4 shadow-md chat-submit"
               style={{
                 cursor:
                   isLoading || (!inputMessage.trim() && !uploadedDocument)
