@@ -73,6 +73,17 @@ const ChatBox = () => {
         className="p-4 flex-grow-1 overflow-auto"
         style={{ height: '600px' }}
       >
+        {messages.length === 0 && !isLoading && (
+          <div className="h-100 d-flex flex-column align-items-center justify-content-center text-center ">
+            <h3 className="text-light mb-2 opacity-75">
+              In cosa posso essere utile?
+            </h3>
+            <p className="text-secondary mb-0">
+              Carica un documento per analizzarlo o fai una domanda
+            </p>
+          </div>
+        )}
+
         {error && <Error message={error} />}
 
         {messages.map((msg) => (
@@ -135,7 +146,7 @@ const ChatBox = () => {
             <Button
               type="submit"
               variant="outline-success"
-              className="bg3 border-0 py-2 px-3 rounded-4 shadow-md"
+              className="bg3 border-0 py-2 px-3 rounded-4 shadow-md chat-submit"
               style={{
                 cursor:
                   isLoading || (!inputMessage.trim() && !uploadedDocument)
