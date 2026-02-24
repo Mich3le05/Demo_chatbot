@@ -3,8 +3,10 @@ package com.chatbot.chatbot_backend.chat;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -14,11 +16,13 @@ import java.util.stream.Collectors;
 @Service
 public class ChatService {
 
+    @Value("${app.chat.max-tokens:120}")
+    private int maxTokens;
+
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
 
     public ChatService(ChatClient.Builder builder, VectorStore vectorStore) {
-
         this.chatClient = builder.build();
         this.vectorStore = vectorStore;
     }
@@ -26,6 +30,9 @@ public class ChatService {
     public String sendMessage(String message) {
         return chatClient.prompt()
                 .user(message)
+                .options(OpenAiChatOptions.builder()
+                        .maxTokens(maxTokens)
+                        .build())
                 .call()
                 .content();
     }
@@ -44,9 +51,9 @@ public class ChatService {
         log.info("RAG search '{}' (filter: {}) → {} docs", message, sourceFile, relevantDocs.size());
 
         if (relevantDocs.isEmpty()) {
+            log.warn("No relevant docs found, falling back to plain chat for: '{}'", message);
             return sendMessage(message);
         }
-
 
         String context = relevantDocs.stream()
                 .map(Document::getText)
@@ -56,11 +63,13 @@ public class ChatService {
     }
 
     public String sendMessageWithContext(String message, String context) {
-
         String minimalPrompt = String.format("CONTEXT:\n%s\n\nUSER QUESTION: %s", context, message);
 
         return chatClient.prompt()
                 .user(minimalPrompt)
+                .options(OpenAiChatOptions.builder()
+                        .maxTokens(maxTokens)
+                        .build())
                 .call()
                 .content();
     }
