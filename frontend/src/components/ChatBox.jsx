@@ -29,7 +29,7 @@ const ChatBox = () => {
     const useRag = !!uploadedDocument
     const sourceFile = uploadedDocument?.fileName || null
 
-    sendMessage(inputMessage, null, useRag, sourceFile)
+    sendMessage(inputMessage, useRag, sourceFile)
     setInputMessage('')
   }
 
@@ -128,9 +128,9 @@ const ChatBox = () => {
                 &times;
               </span>
             </Badge>
-            <medium className="ms-2 text-success opacity-75">
+            <span className="ms-2 text-success opacity-75">
               Documento caricato
-            </medium>
+            </span>
           </div>
         )}
 

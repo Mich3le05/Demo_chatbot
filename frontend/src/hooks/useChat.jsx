@@ -1,5 +1,3 @@
-// Hook per gestione stato chat / logica della chtat
-
 import { useState } from 'react'
 import { chatService } from '../services/chatService'
 
@@ -8,10 +6,11 @@ export const useChat = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // FUNZIONE: aggiunge messaggio all'array
+  let msgCounter = 0
+
   const addMessage = (text, sender) => {
     const newMessage = {
-      id: Date.now(),
+      id: `${Date.now()}-${++msgCounter}`,
       text,
       sender,
       timestamp: new Date().toLocaleTimeString('it-IT', {
@@ -20,42 +19,47 @@ export const useChat = () => {
       }),
     }
     setMessages((prev) => [...prev, newMessage])
-    return newMessage
+    return newMessage.id
   }
 
-  // FUNZIONE PRINCIPALE: invia messaggio al backend
-  const sendMessage = (
-    userMessage,
-    context = null,
-    useRag = false,
-    sourceFile = null,
-  ) => {
+  // Aggiorna il testo di un messaggio esistente tramite id
+  const appendToMessage = (id, chunk) => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === id ? { ...msg, text: msg.text + chunk } : msg,
+      ),
+    )
+  }
+
+  const sendMessage = (userMessage, useRag = false, sourceFile = null) => {
     if (!userMessage.trim()) return
 
     setIsLoading(true)
     setError(null)
     addMessage(userMessage, 'user')
 
-    let apiCall
-    if (useRag) {
-      apiCall = chatService.sendMessageWithRag(userMessage, sourceFile)
-    } else if (context) {
-      apiCall = chatService.sendMessageWithContext(userMessage, context)
-    } else {
-      apiCall = chatService.sendMessage(userMessage)
+    // Crea messaggio bot vuoto e tieni l'id per aggiornarlo
+    const botMsgId = addMessage('', 'bot')
+
+    const onChunk = (chunk) => appendToMessage(botMsgId, chunk)
+    const onDone = () => setIsLoading(false)
+    const onError = (err) => {
+      setError(err.message)
+      appendToMessage(botMsgId, 'Errore: ' + err.message)
+      setIsLoading(false)
     }
 
-    apiCall
-      .then((response) => {
-        addMessage(response.response, 'bot')
-      })
-      .catch((err) => {
-        setError(err.message)
-        addMessage('Errore: ' + err.message, 'system')
-      })
-      .finally(() => {
-        setIsLoading(false)
-      })
+    if (useRag) {
+      chatService.streamMessageWithRag(
+        userMessage,
+        sourceFile,
+        onChunk,
+        onDone,
+        onError,
+      )
+    } else {
+      chatService.streamMessage(userMessage, onChunk, onDone, onError)
+    }
   }
 
   const clearChat = () => {
