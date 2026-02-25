@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Arrays;
 
 @Slf4j
 @Service
@@ -39,11 +40,11 @@ public class DocumentService {
         String filename = file.getOriginalFilename();
         log.debug("Processing file via Tika Server: {}", filename);
 
-        // 0. Verifica se il file è già presente in ChromaDB
         List<Document> existing = vectorStore.similaritySearch(
                 SearchRequest.builder()
-                        .query(filename)
+                        .query("documento")        // query dummy minima
                         .topK(1)
+                        .similarityThreshold(0.0)  // prende qualsiasi risultato
                         .filterExpression("source == '" + filename + "'")
                         .build()
         );
@@ -109,20 +110,76 @@ public class DocumentService {
         }
     }
 
+    /**
+     * Chunking semantico: rispetta i confini naturali del testo.
+     * Strategia a cascata:
+     *   1. Prova a dividere per paragrafo (\n\n)
+     *   2. Se un paragrafo è troppo lungo, divide per frase (. ! ?)
+     *   3. Aggrega i pezzi piccoli finché non raggiungono targetSize
+     */
     private List<String> chunkText(String text) {
+        // Normalizza gli a-capo multipli
+        String normalized = text.replaceAll("\r\n", "\n")
+                .replaceAll("\n{3,}", "\n\n")
+                .strip();
+
+        // Step 1: split per paragrafi
+        List<String> paragraphs = Arrays.stream(normalized.split("\n\n"))
+                .map(String::strip)
+                .filter(p -> !p.isBlank())
+                .toList();
+
+        // Step 2: paragrafi troppo grandi → split per frasi
+        List<String> sentences = new ArrayList<>();
+        for (String paragraph : paragraphs) {
+            if (paragraph.length() <= chunkSize) {
+                sentences.add(paragraph);
+            } else {
+                // Split su fine frase mantenendo il delimitatore
+                String[] parts = paragraph.split("(?<=[.!?])\\s+");
+                sentences.addAll(Arrays.asList(parts));
+            }
+        }
+
+        // Step 3: aggrega frasi piccole in chunk della dimensione target
+        return aggregateIntoChunks(sentences);
+    }
+
+    /**
+     * Aggrega le unità di testo in chunk con overlap semantico.
+     * L'overlap è basato su frasi complete, non su caratteri.
+     */
+    private List<String> aggregateIntoChunks(List<String> units) {
         List<String> chunks = new ArrayList<>();
-        int start = 0;
+        StringBuilder current = new StringBuilder();
+        List<String> currentUnits = new ArrayList<>(); // per gestire l'overlap
 
-        while (start < text.length()) {
-            int end = Math.min(start + chunkSize, text.length());
-            String chunk = text.substring(start, end).strip();
+        for (String unit : units) {
+            // Se aggiungere questa unità supera chunkSize, salva il chunk corrente
+            if (current.length() + unit.length() > chunkSize && !current.isEmpty()) {
+                String chunk = current.toString().strip();
+                if (!chunk.isBlank()) {
+                    chunks.add(chunk);
+                }
 
-            if (!chunk.isBlank()) {
-                chunks.add(chunk);
+                // Overlap semantico: riparti dall'ultima unità del chunk precedente
+                // (non da un punto a caso nel mezzo)
+                current = new StringBuilder();
+                int overlapStart = Math.max(0, currentUnits.size() - 1);
+                for (int i = overlapStart; i < currentUnits.size(); i++) {
+                    current.append(currentUnits.get(i)).append(" ");
+                }
+                currentUnits = new ArrayList<>(currentUnits.subList(overlapStart, currentUnits.size()));
             }
 
-            if (end == text.length()) break;
-            start += (chunkSize - chunkOverlap);
+            current.append(unit).append(" ");
+            currentUnits.add(unit);
+        }
+
+        // Aggiungi l'ultimo chunk residuo
+        String last = current.toString().strip();
+        if (!last.isBlank()) {
+            chunks.add(last);
         }
 
         return chunks;

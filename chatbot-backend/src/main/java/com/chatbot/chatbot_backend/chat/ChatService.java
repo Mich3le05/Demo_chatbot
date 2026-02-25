@@ -41,9 +41,14 @@ public class ChatService {
     }
 
     public String sendMessageWithRag(String message, String sourceFile) {
+
+        // Query enrichment: per riassunti usa una query più specifica
+        String searchQuery = enrichSearchQuery(message);
+
         SearchRequest.Builder requestBuilder = SearchRequest.builder()
-                .query(message)
-                .topK(2);
+                .query(searchQuery)          // ← query arricchita
+                .topK(5)
+                .similarityThreshold(0.3);   // ← scarta chunk irrilevanti (< 30% similarity)
 
         if (sourceFile != null && !sourceFile.isBlank()) {
             requestBuilder.filterExpression("source == '" + sourceFile + "'");
@@ -63,6 +68,26 @@ public class ChatService {
                 .collect(Collectors.joining("\n\n"));
 
         return sendMessageWithContext(message, context);
+    }
+
+    /**
+     * Arricchisce query generiche per migliorare la similarity search.
+     * "riassumi il documento" → cerca i contenuti principali, non la parola "riassumi"
+     */
+    private String enrichSearchQuery(String message) {
+        String lower = message.toLowerCase().trim();
+
+        if (lower.contains("riassumi") || lower.contains("riassunto") || lower.contains("di cosa parla")) {
+            return "argomento principale contenuto obiettivo documento";
+        }
+        if (lower.contains("conclus")) {
+            return "conclusione risultato finale sommario";
+        }
+        if (lower.contains("introduz") || lower.contains("inizia") || lower.contains("inizio")) {
+            return "introduzione premessa contesto iniziale";
+        }
+
+        return message; // query specifica → usala as-is
     }
 
     public String sendMessageWithContext(String message, String context) {
