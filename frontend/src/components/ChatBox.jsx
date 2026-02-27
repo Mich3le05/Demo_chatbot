@@ -26,6 +26,7 @@ const ChatBox = () => {
     e.preventDefault()
     if (!inputMessage.trim()) return
 
+    // useRag=true solo se c'è un documento caricato
     const useRag = !!uploadedDocument
     const sourceFile = uploadedDocument?.fileName || null
 

@@ -1,16 +1,15 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { chatService } from '../services/chatService'
 
 export const useChat = () => {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-
-  let msgCounter = 0
-
+  const msgCounter = useRef(0)
   const addMessage = (text, sender) => {
+    const id = `${Date.now()}-${++msgCounter.current}`
     const newMessage = {
-      id: `${Date.now()}-${++msgCounter}`,
+      id,
       text,
       sender,
       timestamp: new Date().toLocaleTimeString('it-IT', {
@@ -19,10 +18,9 @@ export const useChat = () => {
       }),
     }
     setMessages((prev) => [...prev, newMessage])
-    return newMessage.id
+    return id
   }
 
-  // Aggiorna il testo di un messaggio esistente tramite id
   const appendToMessage = (id, chunk) => {
     setMessages((prev) =>
       prev.map((msg) =>
@@ -37,8 +35,6 @@ export const useChat = () => {
     setIsLoading(true)
     setError(null)
     addMessage(userMessage, 'user')
-
-    // Crea messaggio bot vuoto e tieni l'id per aggiornarlo
     const botMsgId = addMessage('', 'bot')
 
     const onChunk = (chunk) => appendToMessage(botMsgId, chunk)
@@ -67,11 +63,5 @@ export const useChat = () => {
     setError(null)
   }
 
-  return {
-    messages,
-    isLoading,
-    error,
-    sendMessage,
-    clearChat,
-  }
+  return { messages, isLoading, error, sendMessage, clearChat }
 }

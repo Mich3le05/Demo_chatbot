@@ -1,22 +1,16 @@
 import http from '../utils/httpClient'
 
+const STREAM_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+
 export const chatService = {
-  // ── Chiamate bloccanti (esistenti) ──────────────────────────────────────
-  sendMessage: (message) => {
-    return http.post('/chat/message', { message })
-  },
+  sendMessage: (message) => http.post('/chat/message', { message }),
 
-  sendMessageWithContext: (message, context) => {
-    return http.post('/chat/message', { message, context })
-  },
+  sendMessageWithRag: (message, sourceFile) =>
+    http.post('/chat/rag', { message, sourceFile }),
 
-  sendMessageWithRag: (message, sourceFile) => {
-    return http.post('/chat/rag', { message, sourceFile })
-  },
-
-  // ── Streaming ────────────────────────────────────────────────────────────
+  //Streaming
   streamMessage: (message, onChunk, onDone, onError) => {
-    fetch(`${import.meta.env.VITE_API_URL}/chat/message/stream`, {
+    fetch(`${STREAM_BASE}/chat/message/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),
@@ -26,7 +20,7 @@ export const chatService = {
   },
 
   streamMessageWithRag: (message, sourceFile, onChunk, onDone, onError) => {
-    fetch(`${import.meta.env.VITE_API_URL}/chat/rag/stream`, {
+    fetch(`${STREAM_BASE}/chat/rag/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, sourceFile }),
@@ -36,8 +30,11 @@ export const chatService = {
   },
 }
 
-// Legge il ReadableStream chunk per chunk e chiama onChunk ad ogni pezzo
 async function _consumeStream(res, onChunk, onDone) {
+  if (!res.ok) {
+    onDone()
+    return
+  }
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -45,18 +42,14 @@ async function _consumeStream(res, onChunk, onDone) {
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
-    buffer = lines.pop() // tieni l'ultima riga incompleta in buffer
-
+    buffer = lines.pop()
     for (const line of lines) {
       if (line.startsWith('data:')) {
-        const chunk = line.slice(5) // non fare trim() per preservare gli spazi
-        onChunk(chunk)
+        onChunk(line.slice(5))
       }
     }
   }
-
   onDone()
 }
