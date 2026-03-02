@@ -29,6 +29,9 @@ public class ChatService {
     @Value("${app.rag.similarity-threshold:0.4}")
     private double similarityThreshold;
 
+    @Value("${app.chat.system-prompt:}")
+    private String systemPrompt;
+
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
 
@@ -48,12 +51,7 @@ public class ChatService {
             log.info("Auto-RAG sendMessage: '{}' → {} docs", message, docs.size());
             return sendMessageWithContext(message, buildContext(docs));
         }
-        return chatClient.prompt()
-                .user(message)
-                .options(OpenAiChatOptions.builder()
-                        .maxTokens(maxTokensSimple)
-                        .temperature(0.3)
-                        .build())
+        return basicPrompt(message, maxTokensSimple, 0.3)
                 .call()
                 .content();
     }
@@ -62,12 +60,7 @@ public class ChatService {
         List<Document> docs = searchRelevantDocs(message, sourceFile);
         if (docs.isEmpty()) {
             log.warn("RAG: nessun doc per '{}', fallback plain", message);
-            return chatClient.prompt()
-                    .user(message)
-                    .options(OpenAiChatOptions.builder()
-                            .maxTokens(maxTokensSimple)
-                            .temperature(0.3)
-                            .build())
+            return basicPrompt(message, maxTokensSimple, 0.3)
                     .call()
                     .content();
         }
@@ -76,12 +69,7 @@ public class ChatService {
     }
 
     public String sendMessageWithContext(String message, String context) {
-        return chatClient.prompt()
-                .user(RAG_PROMPT_TEMPLATE.formatted(context, message))
-                .options(OpenAiChatOptions.builder()
-                        .maxTokens(maxTokens)
-                        .temperature(0.1)
-                        .build())
+        return basicPrompt(RAG_PROMPT_TEMPLATE.formatted(context, message), maxTokens, 0.1)
                 .call()
                 .content();
     }
@@ -94,12 +82,7 @@ public class ChatService {
             log.info("Auto-RAG stream: '{}' → {} docs", message, docs.size());
             return streamMessageWithContext(message, buildContext(docs));
         }
-        return chatClient.prompt()
-                .user(message)
-                .options(OpenAiChatOptions.builder()
-                        .maxTokens(maxTokensSimple)
-                        .temperature(0.3)
-                        .build())
+        return basicPrompt(message, maxTokensSimple, 0.3)
                 .stream()
                 .content();
     }
@@ -108,12 +91,7 @@ public class ChatService {
         List<Document> docs = searchRelevantDocs(message, sourceFile);
         if (docs.isEmpty()) {
             log.warn("RAG stream: nessun doc per '{}', fallback plain", message);
-            return chatClient.prompt()
-                    .user(message)
-                    .options(OpenAiChatOptions.builder()
-                            .maxTokens(maxTokensSimple)
-                            .temperature(0.3)
-                            .build())
+            return basicPrompt(message, maxTokensSimple, 0.3)
                     .stream()
                     .content();
         }
@@ -122,12 +100,7 @@ public class ChatService {
     }
 
     public Flux<String> streamMessageWithContext(String message, String context) {
-        return chatClient.prompt()
-                .user(RAG_PROMPT_TEMPLATE.formatted(context, message))
-                .options(OpenAiChatOptions.builder()
-                        .maxTokens(maxTokens)
-                        .temperature(0.1)
-                        .build())
+        return basicPrompt(RAG_PROMPT_TEMPLATE.formatted(context, message), maxTokens, 0.1)
                 .stream()
                 .content();
     }
@@ -151,5 +124,20 @@ public class ChatService {
         return docs.stream()
                 .map(Document::getText)
                 .collect(Collectors.joining("\n---\n"));
+    }
+
+    private ChatClient.ChatClientRequestSpec basicPrompt(String userMessage, int localMaxTokens, double temperature) {
+        ChatClient.ChatClientRequestSpec request = chatClient.prompt();
+
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            request = request.system(systemPrompt);
+        }
+
+        return request
+                .user(userMessage)
+                .options(OpenAiChatOptions.builder()
+                        .maxTokens(localMaxTokens)
+                        .temperature(temperature)
+                        .build());
     }
 }
