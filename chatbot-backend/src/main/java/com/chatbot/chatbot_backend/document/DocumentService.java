@@ -14,6 +14,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -34,7 +35,12 @@ public class DocumentService {
     @Value("${app.rag.chunk-overlap}")
     private int chunkOverlap;
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    // FIX-3: timeout esplicito — evita che il thread resti bloccato
+    // indefinitamente se Tika Server è irraggiungibile
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
     private final VectorStore vectorStore;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -45,8 +51,6 @@ public class DocumentService {
         String filename = file.getOriginalFilename();
         log.debug("Processing file via Tika Server: {}", filename);
 
-        // FIX-3: check duplicato con query semantica sul filename,
-        // non più con la query dummy "documento" che generava un embedding inutile
         if (isFileAlreadyIndexed(filename)) {
             throw new IllegalStateException(
                     "Il file '" + filename + "' è già presente in memoria. " +
@@ -57,7 +61,7 @@ public class DocumentService {
         // 1. Estrazione testo via Tika
         String rawText = extractTextViaTika(file);
 
-        // FIX-1: pulizia artefatti Word/PDF prima del chunking
+        // Pulizia artefatti Word/PDF prima del chunking
         String extractedText = cleanTikaOutput(rawText);
         log.debug("Testo pulito: {} char (raw: {} char)", extractedText.length(), rawText.length());
 
@@ -89,35 +93,38 @@ public class DocumentService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * FIX-3: verifica se un file è già indicizzato usando il suo nome come query,
-     * che è semanticamente più pertinente rispetto alla query dummy "documento".
-     * In caso di errore ChromaDB, ritorna false per non bloccare l'upload.
+     * Verifica se un file è già indicizzato filtrando per source == filename.
+     * FIX-1 (Security): il filename viene sanitizzato prima di essere interpolato
+     * nella filterExpression per prevenire injection sul parser di ChromaDB.
      */
     private boolean isFileAlreadyIndexed(String filename) {
         try {
+            String safeFilename = sanitizeFilterValue(filename);
             List<Document> existing = vectorStore.similaritySearch(
                     SearchRequest.builder()
                             .query(filename)
                             .topK(1)
                             .similarityThreshold(0.0)
-                            .filterExpression("source == '" + filename + "'")
+                            .filterExpression("source == '" + safeFilename + "'")
                             .build()
             );
             return !existing.isEmpty();
         } catch (Exception e) {
             log.warn("Impossibile verificare duplicato per '{}': {}", filename, e.getMessage());
-            return false; // in caso di errore, procedi con l'upload
+            return false;
         }
     }
 
     /**
      * Estrae il testo grezzo dal file tramite Apache Tika Server.
+     * FIX-3: timeout di 30s sulla singola richiesta per evitare blocchi prolungati.
      */
     private String extractTextViaTika(MultipartFile file) throws IOException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(tikaServerUrl + "/tika"))
                 .header("Accept", "text/plain")
                 .header("Content-Type", "application/octet-stream")
+                .timeout(Duration.ofSeconds(30)) // FIX-3: timeout per-request
                 .PUT(HttpRequest.BodyPublishers.ofByteArray(file.getBytes()))
                 .build();
 
@@ -143,7 +150,7 @@ public class DocumentService {
     }
 
     /**
-     * FIX-1: rimuove gli artefatti prodotti da Tika sui file Word/PDF:
+     * Rimuove gli artefatti prodotti da Tika sui file Word/PDF:
      *   - tag immagine:  [image: qualcosa]
      *   - bookmark Word: [bookmark: _Toc...]
      *   - watermark AI:  "AI-generated content may be incorrect."
@@ -154,15 +161,10 @@ public class DocumentService {
      */
     private String cleanTikaOutput(String raw) {
         return raw
-                // Rimuove tag immagine Tika (anche multiriga fino alla parentesi chiusa)
                 .replaceAll("\\[image:[^]]*]", "")
-                // Rimuove bookmark Word
                 .replaceAll("\\[bookmark:[^]]*]", "")
-                // Rimuove watermark AI di Word (con varianti di punteggiatura)
                 .replaceAll("AI-generated content may be incorrect\\.?]?", "")
-                // Collassa righe vuote eccessive in una sola riga vuota
                 .replaceAll("\n{3,}", "\n\n")
-                // Rimuove righe che non contengono alcun carattere alfanumerico
                 .replaceAll("(?m)^[^a-zA-Z0-9àèìòùÀÈÌÒÙ\\s]*$", "")
                 .strip();
     }
@@ -179,25 +181,21 @@ public class DocumentService {
                 .replaceAll("\n{3,}", "\n\n")
                 .strip();
 
-        // Step 1: split per paragrafi
         List<String> paragraphs = Arrays.stream(normalized.split("\n\n"))
                 .map(String::strip)
                 .filter(p -> !p.isBlank())
                 .toList();
 
-        // Step 2: paragrafi troppo grandi → split per frasi
         List<String> sentences = new ArrayList<>();
         for (String paragraph : paragraphs) {
             if (paragraph.length() <= chunkSize) {
                 sentences.add(paragraph);
             } else {
-                // Split su fine frase mantenendo il delimitatore
                 String[] parts = paragraph.split("(?<=[.!?])\\s+");
                 sentences.addAll(Arrays.asList(parts));
             }
         }
 
-        // Step 3: aggrega frasi in chunk con overlap semantico
         return aggregateIntoChunks(sentences);
     }
 
@@ -206,19 +204,17 @@ public class DocumentService {
      * su frasi complete (non su caratteri arbitrari).
      */
     private List<String> aggregateIntoChunks(List<String> units) {
-        List<String> chunks    = new ArrayList<>();
-        StringBuilder current  = new StringBuilder();
+        List<String> chunks       = new ArrayList<>();
+        StringBuilder current     = new StringBuilder();
         List<String> currentUnits = new ArrayList<>();
 
         for (String unit : units) {
-            // Se aggiungere questa unità supera chunkSize, salva il chunk corrente
             if (current.length() + unit.length() > chunkSize && !current.isEmpty()) {
                 String chunk = current.toString().strip();
                 if (!chunk.isBlank()) {
                     chunks.add(chunk);
                 }
 
-                // Overlap semantico: riparti dall'ultima frase del chunk precedente
                 current = new StringBuilder();
                 int overlapStart = Math.max(0, currentUnits.size() - 1);
                 for (int i = overlapStart; i < currentUnits.size(); i++) {
@@ -231,7 +227,6 @@ public class DocumentService {
             currentUnits.add(unit);
         }
 
-        // Aggiungi l'ultimo chunk residuo
         String last = current.toString().strip();
         if (!last.isBlank()) {
             chunks.add(last);
@@ -242,7 +237,6 @@ public class DocumentService {
 
     /**
      * Converte i chunk in Document objects con metadata e li salva in ChromaDB.
-     * Spring AI calcola automaticamente gli embedding tramite LM Studio.
      */
     private void saveToVectorStore(List<String> chunks, String filename, String contentType) {
         List<Document> documents = chunks.stream()
@@ -257,5 +251,15 @@ public class DocumentService {
                 .toList();
 
         vectorStore.add(documents);
+    }
+
+    /**
+     * FIX-1 (Security): sanitizza i valori interpolati nelle filterExpression
+     * di ChromaDB, che usa un parser simil-SQL sensibile agli apici singoli.
+     * Escape dell'apice singolo → \' per prevenire injection sul filtro.
+     */
+    private String sanitizeFilterValue(String value) {
+        if (value == null) return "";
+        return value.replace("'", "\\'");
     }
 }
