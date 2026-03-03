@@ -7,6 +7,8 @@ import lombok.Data;
 @AllArgsConstructor
 public class ChatResponse {
 
+    //corpo della risposta: testo generato dal modello
+
     private String response;
     private boolean hasContext;
 }

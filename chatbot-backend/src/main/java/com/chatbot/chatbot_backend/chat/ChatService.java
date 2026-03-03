@@ -35,7 +35,11 @@ public class ChatService {
     // "RISPOSTA DETTAGLIATA:" guida Phi-3.5 a non troncare la risposta
     // Il prefisso fisso favorisce il KV Cache di LM Studio
     private static final String RAG_PROMPT_TEMPLATE =
-            "CONTESTO:\n%s\n\nDOMANDA: %s\nRISPOSTA DETTAGLIATA:";
+            "Saluti: Rispondi brevemente (es: \"Ciao, come posso aiutarti?\")"+
+                    "Documenti: Usa il CONTESTO. Se l'info manca nel contesto o nelle tue conoscenze, scrivi: \"Non ho informazioni su questo\" e fermati." +
+                    "Formato: Risposta diretta. No sezioni (Panoramica/Punti chiave)."+
+                    "Vincoli: Niente spiegazioni del tuo operato o limiti minimi di parole."+
+            "CONTESTO:\n%s\n\nDOMANDA: %s\nRISPOSTA COMPLETA E DETTAGLIATA:";
 
     public ChatService(ChatClient.Builder builder, VectorStore vectorStore) {
         // Nessun defaultSystem() → zero overhead KV Cache

@@ -17,7 +17,7 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    // ── Endpoint bloccanti (esistenti) ──────────────────────────────────────
+    // Endpoint 1:  Chat semplice
 
     @PostMapping("/message")
     public ResponseEntity<ChatResponse> sendMessage(@Valid @RequestBody ChatRequest request) {
@@ -41,7 +41,7 @@ public class ChatController {
         return ResponseEntity.ok(new ChatResponse(response, true));
     }
 
-    // ── Endpoint streaming ──────────────────────────────────────────────────
+    // Endpoint streaming
 
     @PostMapping(value = "/message/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamMessage(@Valid @RequestBody ChatRequest request) {
