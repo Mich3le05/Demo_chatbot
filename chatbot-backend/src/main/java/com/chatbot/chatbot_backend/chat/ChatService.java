@@ -32,9 +32,10 @@ public class ChatService {
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
 
+    // "RISPOSTA DETTAGLIATA:" guida Phi-3.5 a non troncare la risposta
     // Il prefisso fisso favorisce il KV Cache di LM Studio
     private static final String RAG_PROMPT_TEMPLATE =
-            "CONTESTO:\n%s\n\nDOMANDA: %s\nRISPOSTA:";
+            "CONTESTO:\n%s\n\nDOMANDA: %s\nRISPOSTA DETTAGLIATA:";
 
     public ChatService(ChatClient.Builder builder, VectorStore vectorStore) {
         // Nessun defaultSystem() → zero overhead KV Cache
@@ -86,7 +87,7 @@ public class ChatService {
                 .content();
     }
 
-    // Streaming
+    // ── Streaming ────────────────────────────────────────────────────────────
 
     public Flux<String> streamMessage(String message) {
         List<Document> docs = searchRelevantDocs(message, null);
@@ -132,8 +133,12 @@ public class ChatService {
                 .content();
     }
 
-    // Helper
+    // ── Helper ───────────────────────────────────────────────────────────────
 
+    /**
+     * FIX-1 (Security): sourceFile viene sanitizzato prima di essere interpolato
+     * nella filterExpression per prevenire injection sul parser di ChromaDB.
+     */
     private List<Document> searchRelevantDocs(String message, String sourceFile) {
         SearchRequest.Builder builder = SearchRequest.builder()
                 .query(message)
@@ -141,7 +146,8 @@ public class ChatService {
                 .similarityThreshold(similarityThreshold);
 
         if (sourceFile != null && !sourceFile.isBlank()) {
-            builder.filterExpression("source == '" + sourceFile + "'");
+            String safeSource = sanitizeFilterValue(sourceFile);
+            builder.filterExpression("source == '" + safeSource + "'");
         }
 
         return vectorStore.similaritySearch(builder.build());
@@ -151,5 +157,14 @@ public class ChatService {
         return docs.stream()
                 .map(Document::getText)
                 .collect(Collectors.joining("\n---\n"));
+    }
+
+    /**
+     * Sanitizza i valori interpolati nelle filterExpression di ChromaDB.
+     * Escape dell'apice singolo per prevenire injection sul filtro.
+     */
+    private String sanitizeFilterValue(String value) {
+        if (value == null) return "";
+        return value.replace("'", "\\'");
     }
 }
