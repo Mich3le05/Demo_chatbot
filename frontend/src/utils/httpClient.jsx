@@ -1,5 +1,4 @@
-// HTTP Client basato su Fetch API nativa
-// Gestisce comunicazione con backend Spring Boot
+// Gestisce comunicazione con backend
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
