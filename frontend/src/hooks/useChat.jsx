@@ -5,19 +5,14 @@ export const useChat = () => {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+
   const msgCounter = useRef(0)
+  // Tiene traccia dell'AbortController dello stream corrente
+  const abortControllerRef = useRef(null)
+
   const addMessage = (text, sender) => {
     const id = `${Date.now()}-${++msgCounter.current}`
-    const newMessage = {
-      id,
-      text,
-      sender,
-      timestamp: new Date().toLocaleTimeString('it-IT', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    }
-    setMessages((prev) => [...prev, newMessage])
+    setMessages((prev) => [...prev, { id, text, sender }])
     return id
   }
 
@@ -32,14 +27,31 @@ export const useChat = () => {
   const sendMessage = (userMessage, useRag = false, sourceFile = null) => {
     if (!userMessage.trim()) return
 
+    // Se c'è già uno stream attivo, lo cancella prima di avviarne uno nuovo
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    // Crea un nuovo controller per questo stream
+    abortControllerRef.current = new AbortController()
+    const { signal } = abortControllerRef.current
+
     setIsLoading(true)
     setError(null)
     addMessage(userMessage, 'user')
     const botMsgId = addMessage('', 'bot')
 
-    const onChunk = (chunk) => appendToMessage(botMsgId, chunk)
-    const onDone = () => setIsLoading(false)
+    // I callback ignorano i chunk se lo stream è già stato cancellato
+    const onChunk = (chunk) => {
+      if (!signal.aborted) appendToMessage(botMsgId, chunk)
+    }
+
+    const onDone = () => {
+      if (!signal.aborted) setIsLoading(false)
+    }
+
     const onError = (err) => {
+      // AbortError è normale (utente ha cancellato), non mostrare come errore
+      if (err.name === 'AbortError') return
       setError(err.message)
       appendToMessage(botMsgId, 'Errore: ' + err.message)
       setIsLoading(false)
@@ -52,15 +64,22 @@ export const useChat = () => {
         onChunk,
         onDone,
         onError,
+        signal,
       )
     } else {
-      chatService.streamMessage(userMessage, onChunk, onDone, onError)
+      chatService.streamMessage(userMessage, onChunk, onDone, onError, signal)
     }
   }
 
   const clearChat = () => {
+    // Cancella lo stream in corso prima di svuotare la chat
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
     setMessages([])
     setError(null)
+    setIsLoading(false) // ← importante: resetta anche il loading
   }
 
   return { messages, isLoading, error, sendMessage, clearChat }

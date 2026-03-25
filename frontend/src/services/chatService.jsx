@@ -9,21 +9,32 @@ export const chatService = {
     http.post('/chat/rag', { message, sourceFile }),
 
   //Streaming
-  streamMessage: (message, onChunk, onDone, onError) => {
+  // chatService.jsx — aggiungi signal ai due metodi streaming
+
+  streamMessage: (message, onChunk, onDone, onError, signal) => {
     fetch(`${STREAM_BASE}/chat/message/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),
+      signal, // ← il browser interrompe il fetch quando signal.abort() viene chiamato
     })
       .then((res) => _consumeStream(res, onChunk, onDone))
       .catch(onError)
   },
 
-  streamMessageWithRag: (message, sourceFile, onChunk, onDone, onError) => {
+  streamMessageWithRag: (
+    message,
+    sourceFile,
+    onChunk,
+    onDone,
+    onError,
+    signal,
+  ) => {
     fetch(`${STREAM_BASE}/chat/rag/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, sourceFile }),
+      signal, // ← stesso qui
     })
       .then((res) => _consumeStream(res, onChunk, onDone))
       .catch(onError)

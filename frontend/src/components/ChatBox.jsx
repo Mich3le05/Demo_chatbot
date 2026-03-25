@@ -67,7 +67,13 @@ const ChatBox = () => {
         type="file"
         ref={fileInputRef}
         style={{ display: 'none' }}
-        onChange={(e) => uploadDocument(e.target.files[0])}
+        onChange={(e) => {
+          const file = e.target.files[0]
+          if (file) {
+            uploadDocument(file)
+            e.target.value = ''
+          }
+        }}
       />
 
       <Card.Body

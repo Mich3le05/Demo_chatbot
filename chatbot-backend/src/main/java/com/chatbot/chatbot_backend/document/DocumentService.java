@@ -204,22 +204,40 @@ public class DocumentService {
      * su frasi complete (non su caratteri arbitrari).
      */
     private List<String> aggregateIntoChunks(List<String> units) {
-        List<String> chunks       = new ArrayList<>();
-        StringBuilder current     = new StringBuilder();
+        List<String> chunks = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
         List<String> currentUnits = new ArrayList<>();
 
         for (String unit : units) {
-            if (current.length() + unit.length() > chunkSize && !current.isEmpty()) {
+            boolean wouldExceed = (current.length() + unit.length() + 1) > chunkSize;
+
+            if (wouldExceed && !current.isEmpty()) {
+                // 1. Salva il chunk corrente
                 String chunk = current.toString().strip();
                 if (!chunk.isBlank()) {
                     chunks.add(chunk);
                 }
 
+                // 2. Calcola quante unità tenere come overlap
+                //    scorrendo all'indietro finché non accumulo chunkOverlap caratteri
+                int overlapChars = 0;
+                int overlapStart = currentUnits.size(); // parte dalla fine
+
+                for (int i = currentUnits.size() - 1; i >= 0; i--) {
+                    overlapChars += currentUnits.get(i).length();
+                    overlapStart = i;
+                    if (overlapChars >= chunkOverlap) {
+                        break;
+                    }
+                }
+
+                // 3. Ricostruisce current con il for classico (no lambda → no errore)
                 current = new StringBuilder();
-                int overlapStart = Math.max(0, currentUnits.size() - 1);
                 for (int i = overlapStart; i < currentUnits.size(); i++) {
                     current.append(currentUnits.get(i)).append(" ");
                 }
+
+                // 4. Aggiorna la lista delle unità correnti tenendo solo l'overlap
                 currentUnits = new ArrayList<>(currentUnits.subList(overlapStart, currentUnits.size()));
             }
 
@@ -227,6 +245,7 @@ public class DocumentService {
             currentUnits.add(unit);
         }
 
+        // Ultimo chunk residuo
         String last = current.toString().strip();
         if (!last.isBlank()) {
             chunks.add(last);

@@ -1,6 +1,5 @@
 package com.chatbot.chatbot_backend.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chroma.vectorstore.ChromaApi;
 import org.springframework.ai.chroma.vectorstore.ChromaVectorStore;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -9,24 +8,24 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-import java.lang.reflect.Constructor;
-
 @Configuration
 public class ChromaConfig {
 
+    // Bean: client HTTP con timeout espliciti
     @Bean
-    public ChromaApi chromaApi() throws Exception {
-        RestClient.Builder builder = RestClient.builder()
+    public RestClient.Builder chromaRestClientBuilder() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);  // 5s per connettersi
+        factory.setReadTimeout(10000);    // 10s per leggere la risposta
+        return RestClient.builder().requestFactory(factory);
+    }
+
+    @Bean
+    public ChromaApi chromaApi(RestClient.Builder chromaRestClientBuilder) {
+        return ChromaApi.builder()
                 .baseUrl("http://localhost:8000")
-                .requestFactory(new SimpleClientHttpRequestFactory());
-
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        Constructor<ChromaApi> constructor = ChromaApi.class.getDeclaredConstructor(
-                String.class, RestClient.Builder.class, ObjectMapper.class
-        );
-        constructor.setAccessible(true);
-        return constructor.newInstance("http://localhost:8000", builder, objectMapper);
+                .restClientBuilder(chromaRestClientBuilder)
+                .build();
     }
 
     @Bean
