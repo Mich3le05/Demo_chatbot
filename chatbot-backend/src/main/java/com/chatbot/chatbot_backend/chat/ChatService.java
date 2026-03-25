@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 @Service
 public class ChatService {
 
-    @Value("${app.chat.max-tokens:500}")
+    @Value("${app.chat.max-tokens:300}")
     private int maxTokens;
 
     @Value("${app.chat.max-tokens-simple:80}")
@@ -26,59 +26,44 @@ public class ChatService {
     @Value("${app.rag.top-k:3}")
     private int topK;
 
-    @Value("${app.rag.similarity-threshold:0.45}")
+    @Value("${app.rag.similarity-threshold:0.4}")
     private double similarityThreshold;
 
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
 
-    /**
-     * Istruzioni comportamentali nel system role.
-     * Phi-3.5 rispetta queste direttive solo se arrivano come "system" message,
-     * non se vengono inserite nel corpo del prompt utente.
-     */
-    private static final String SYSTEM_PROMPT =
-            "Sei un assistente preciso e diretto. " +
-                    "Quando viene fornito un CONTESTO, usalo come fonte primaria per rispondere. " +
-                    "Integra il contesto con le tue conoscenze generali se necessario per dare una risposta completa. " +
-                    "Usa titoli, sezioni ed elenchi puntati per strutturare la risposta in modo chiaro e leggibile. " +
-                    "Non spiegare il tuo operato.";
-
-    private static final String SYSTEM_GREETING =
-            "Sei un assistente cordiale. Rispondi ai saluti in modo breve e naturale.";
-
-    /**
-     * Template RAG: struttura dati pura, zero istruzioni comportamentali.
-     * Le istruzioni vanno nel system role, non qui.
-     */
-    private static final String RAG_TEMPLATE =
-            "CONTESTO:\n%s\n\nDOMANDA: %s\nRISPOSTA:";
+    // "RISPOSTA DETTAGLIATA:" guida Phi-3.5 a non troncare la risposta
+    // Il prefisso fisso favorisce il KV Cache di LM Studio
+    private static final String RAG_PROMPT_TEMPLATE =
+            """
+        Sei un assistente preciso. Rispondi SOLO usando le informazioni nel CONTESTO.
+        Se l'informazione non è presente nel contesto, rispondi: "Non ho informazioni su questo."
+        Non aggiungere spiegazioni sul tuo funzionamento. Rispondi in italiano.
+        
+        CONTESTO:
+        %s
+        
+        DOMANDA: %s
+        RISPOSTA:""";
 
     public ChatService(ChatClient.Builder builder, VectorStore vectorStore) {
+        // Nessun defaultSystem() → zero overhead KV Cache
         this.chatClient = builder.build();
         this.vectorStore = vectorStore;
     }
 
-    // ── Sync ─────────────────────────────────────────────────────────────────
-
     public String sendMessage(String message) {
-        if (isGreeting(message)) {
-            return chatClient.prompt()
-                    .system(SYSTEM_GREETING)
-                    .user(message)
-                    .options(buildOptions(maxTokensSimple, 0.3))
-                    .call()
-                    .content();
-        }
         List<Document> docs = searchRelevantDocs(message, null);
         if (!docs.isEmpty()) {
-            log.info("Auto-RAG: '{}' → {} docs", message, docs.size());
+            log.info("Auto-RAG sendMessage: '{}' → {} docs", message, docs.size());
             return sendMessageWithContext(message, buildContext(docs));
         }
         return chatClient.prompt()
-                .system(SYSTEM_PROMPT)
                 .user(message)
-                .options(buildOptions(maxTokensSimple, 0.3))
+                .options(OpenAiChatOptions.builder()
+                        .maxTokens(maxTokensSimple)
+                        .temperature(0.3)
+                        .build())
                 .call()
                 .content();
     }
@@ -88,21 +73,25 @@ public class ChatService {
         if (docs.isEmpty()) {
             log.warn("RAG: nessun doc per '{}', fallback plain", message);
             return chatClient.prompt()
-                    .system(SYSTEM_PROMPT)
                     .user(message)
-                    .options(buildOptions(maxTokensSimple, 0.3))
+                    .options(OpenAiChatOptions.builder()
+                            .maxTokens(maxTokensSimple)
+                            .temperature(0.3)
+                            .build())
                     .call()
                     .content();
         }
-        log.info("RAG: '{}' (filter: {}) → {} docs", message, sourceFile, docs.size());
+        log.info("RAG '{}' (filter: {}) → {} docs", message, sourceFile, docs.size());
         return sendMessageWithContext(message, buildContext(docs));
     }
 
     public String sendMessageWithContext(String message, String context) {
         return chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .user(RAG_TEMPLATE.formatted(context, message))
-                .options(buildOptions(maxTokens, 0.1))
+                .user(RAG_PROMPT_TEMPLATE.formatted(context, message))
+                .options(OpenAiChatOptions.builder()
+                        .maxTokens(maxTokens)
+                        .temperature(0.1)
+                        .build())
                 .call()
                 .content();
     }
@@ -110,23 +99,17 @@ public class ChatService {
     // ── Streaming ────────────────────────────────────────────────────────────
 
     public Flux<String> streamMessage(String message) {
-        if (isGreeting(message)) {
-            return chatClient.prompt()
-                    .system(SYSTEM_GREETING)
-                    .user(message)
-                    .options(buildOptions(maxTokensSimple, 0.3))
-                    .stream()
-                    .content();
-        }
         List<Document> docs = searchRelevantDocs(message, null);
         if (!docs.isEmpty()) {
             log.info("Auto-RAG stream: '{}' → {} docs", message, docs.size());
             return streamMessageWithContext(message, buildContext(docs));
         }
         return chatClient.prompt()
-                .system(SYSTEM_PROMPT)
                 .user(message)
-                .options(buildOptions(maxTokensSimple, 0.3))
+                .options(OpenAiChatOptions.builder()
+                        .maxTokens(maxTokensSimple)
+                        .temperature(0.3)
+                        .build())
                 .stream()
                 .content();
     }
@@ -136,35 +119,35 @@ public class ChatService {
         if (docs.isEmpty()) {
             log.warn("RAG stream: nessun doc per '{}', fallback plain", message);
             return chatClient.prompt()
-                    .system(SYSTEM_PROMPT)
                     .user(message)
-                    .options(buildOptions(maxTokensSimple, 0.3))
+                    .options(OpenAiChatOptions.builder()
+                            .maxTokens(maxTokensSimple)
+                            .temperature(0.3)
+                            .build())
                     .stream()
                     .content();
         }
-        log.info("RAG stream: '{}' → {} docs", message, docs.size());
+        log.info("RAG stream '{}' → {} docs", message, docs.size());
         return streamMessageWithContext(message, buildContext(docs));
     }
 
     public Flux<String> streamMessageWithContext(String message, String context) {
         return chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .user(RAG_TEMPLATE.formatted(context, message))
-                .options(buildOptions(maxTokens, 0.1))
+                .user(RAG_PROMPT_TEMPLATE.formatted(context, message))
+                .options(OpenAiChatOptions.builder()
+                        .maxTokens(maxTokens)
+                        .temperature(0.1)
+                        .build())
                 .stream()
                 .content();
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────
 
-    private boolean isGreeting(String message) {
-        if (message == null) return true;
-        String lower = message.toLowerCase().strip();
-        return lower.length() < 15 ||
-                lower.matches("(ciao|salve|buongiorno|buonasera|hey|hi|hello|" +
-                        "ok|grazie|thanks|prego|arrivederci|bye|saluti).*");
-    }
-
+    /**
+     * FIX-1 (Security): sourceFile viene sanitizzato prima di essere interpolato
+     * nella filterExpression per prevenire injection sul parser di ChromaDB.
+     */
     private List<Document> searchRelevantDocs(String message, String sourceFile) {
         SearchRequest.Builder builder = SearchRequest.builder()
                 .query(message)
@@ -172,7 +155,8 @@ public class ChatService {
                 .similarityThreshold(similarityThreshold);
 
         if (sourceFile != null && !sourceFile.isBlank()) {
-            builder.filterExpression("source == '" + sanitize(sourceFile) + "'");
+            String safeSource = sanitizeFilterValue(sourceFile);
+            builder.filterExpression("source == '" + safeSource + "'");
         }
 
         return vectorStore.similaritySearch(builder.build());
@@ -184,14 +168,12 @@ public class ChatService {
                 .collect(Collectors.joining("\n---\n"));
     }
 
-    private OpenAiChatOptions buildOptions(int tokens, double temperature) {
-        return OpenAiChatOptions.builder()
-                .maxTokens(tokens)
-                .temperature(temperature)
-                .build();
-    }
-
-    private String sanitize(String value) {
-        return value == null ? "" : value.replace("'", "\\'");
+    /**
+     * Sanitizza i valori interpolati nelle filterExpression di ChromaDB.
+     * Escape dell'apice singolo per prevenire injection sul filtro.
+     */
+    private String sanitizeFilterValue(String value) {
+        if (value == null) return "";
+        return value.replace("'", "\\'");
     }
 }
