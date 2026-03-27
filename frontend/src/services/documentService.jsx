@@ -1,5 +1,3 @@
-// Service per upload e parsing documenti Excel/PDF
-
 import http from '../utils/httpClient'
 
 export const documentService = {
@@ -8,4 +6,9 @@ export const documentService = {
     formData.append('file', file)
     return http.postFile('/document/upload', formData)
   },
+
+  deleteDocument: (filename) =>
+    http.delete(`/document/${encodeURIComponent(filename)}`),
+
+  listDocuments: () => http.get('/document/list'),
 }

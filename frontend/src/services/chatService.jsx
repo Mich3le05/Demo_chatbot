@@ -1,22 +1,24 @@
+// frontend/src/services/chatService.jsx
 import http from '../utils/httpClient'
 
 const STREAM_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
 export const chatService = {
-  sendMessage: (message) => http.post('/chat/message', { message }),
+  sendMessage: (message, sessionId) =>
+    http.post('/chat/message', { message, sessionId }),
 
-  sendMessageWithRag: (message, sourceFile) =>
-    http.post('/chat/rag', { message, sourceFile }),
+  sendMessageWithRag: (message, sourceFile, sessionId) =>
+    http.post('/chat/rag', { message, sourceFile, sessionId }),
 
-  //Streaming
-  // chatService.jsx — aggiungi signal ai due metodi streaming
+  clearSession: (sessionId) =>
+    http.post('/chat/clear', { message: '_', sessionId }),
 
-  streamMessage: (message, onChunk, onDone, onError, signal) => {
+  streamMessage: (message, sessionId, onChunk, onDone, onError, signal) => {
     fetch(`${STREAM_BASE}/chat/message/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
-      signal, // ← il browser interrompe il fetch quando signal.abort() viene chiamato
+      body: JSON.stringify({ message, sessionId }),
+      signal,
     })
       .then((res) => _consumeStream(res, onChunk, onDone))
       .catch(onError)
@@ -25,6 +27,7 @@ export const chatService = {
   streamMessageWithRag: (
     message,
     sourceFile,
+    sessionId,
     onChunk,
     onDone,
     onError,
@@ -33,8 +36,8 @@ export const chatService = {
     fetch(`${STREAM_BASE}/chat/rag/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, sourceFile }),
-      signal, // ← stesso qui
+      body: JSON.stringify({ message, sourceFile, sessionId }),
+      signal,
     })
       .then((res) => _consumeStream(res, onChunk, onDone))
       .catch(onError)
@@ -46,6 +49,7 @@ async function _consumeStream(res, onChunk, onDone) {
     onDone()
     return
   }
+
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -57,9 +61,7 @@ async function _consumeStream(res, onChunk, onDone) {
     const lines = buffer.split('\n')
     buffer = lines.pop()
     for (const line of lines) {
-      if (line.startsWith('data:')) {
-        onChunk(line.slice(5))
-      }
+      if (line.startsWith('data:')) onChunk(line.slice(5))
     }
   }
   onDone()

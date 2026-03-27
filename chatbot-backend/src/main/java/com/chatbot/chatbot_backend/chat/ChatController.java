@@ -17,18 +17,18 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    // Endpoint 1:  Chat semplice
-
     @PostMapping("/message")
     public ResponseEntity<ChatResponse> sendMessage(@Valid @RequestBody ChatRequest request) {
+        String sessionId = request.getSessionId();
         String response;
 
         if (request.getContext() != null && !request.getContext().isBlank()) {
-            response = chatService.sendMessageWithContext(request.getMessage(), request.getContext());
+            response = chatService.sendMessageWithContext(
+                    request.getMessage(), request.getContext(), sessionId);
             return ResponseEntity.ok(new ChatResponse(response, true));
         }
 
-        response = chatService.sendMessage(request.getMessage());
+        response = chatService.sendMessage(request.getMessage(), sessionId);
         return ResponseEntity.ok(new ChatResponse(response, false));
     }
 
@@ -36,26 +36,36 @@ public class ChatController {
     public ResponseEntity<ChatResponse> sendMessageWithRag(@Valid @RequestBody ChatRequest request) {
         String response = chatService.sendMessageWithRag(
                 request.getMessage(),
-                request.getSourceFile()
-        );
+                request.getSourceFile(),
+                request.getSessionId());
         return ResponseEntity.ok(new ChatResponse(response, true));
     }
 
-    // Endpoint streaming
-
     @PostMapping(value = "/message/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamMessage(@Valid @RequestBody ChatRequest request) {
+        String sessionId = request.getSessionId();
+
         if (request.getContext() != null && !request.getContext().isBlank()) {
-            return chatService.streamMessageWithContext(request.getMessage(), request.getContext());
+            return chatService.streamMessageWithContext(
+                    request.getMessage(), request.getContext(), sessionId);
         }
-        return chatService.streamMessage(request.getMessage());
+        return chatService.streamMessage(request.getMessage(), sessionId);
     }
 
     @PostMapping(value = "/rag/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamMessageWithRag(@Valid @RequestBody ChatRequest request) {
         return chatService.streamMessageWithRag(
                 request.getMessage(),
-                request.getSourceFile()
-        );
+                request.getSourceFile(),
+                request.getSessionId());
+    }
+
+    // Endpoint per pulire la memoria server-side quando l'utente clicca "Pulisci chat"
+    @PostMapping("/clear")
+    public ResponseEntity<Void> clearSession(@Valid @RequestBody ChatRequest request) {
+        if (request.getSessionId() != null && !request.getSessionId().isBlank()) {
+            chatService.clearSession(request.getSessionId());
+        }
+        return ResponseEntity.noContent().build();
     }
 }

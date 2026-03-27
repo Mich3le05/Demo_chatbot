@@ -281,4 +281,63 @@ public class DocumentService {
         if (value == null) return "";
         return value.replace("'", "\\'");
     }
+
+    public void deleteDocument(String filename) {
+        try {
+            String safeFilename = sanitizeFilterValue(filename);
+
+            // Recupera gli ID dei chunk da eliminare
+            List<Document> toDelete = vectorStore.similaritySearch(
+                    SearchRequest.builder()
+                            .query(filename)
+                            .topK(1000)               // prende tutti i chunk del file
+                            .similarityThreshold(0.0) // qualsiasi similarità
+                            .filterExpression("source == '" + safeFilename + "'")
+                            .build()
+            );
+
+            if (toDelete.isEmpty()) {
+                log.warn("Nessun chunk trovato per: {}", filename);
+                return;
+            }
+
+            List<String> ids = toDelete.stream()
+                    .map(Document::getId)
+                    .toList();
+
+            vectorStore.delete(ids);
+            log.info("Eliminati {} chunk per: {}", ids.size(), filename);
+
+        } catch (Exception e) {
+            log.error("Errore eliminazione documento '{}': {}", filename, e.getMessage());
+            throw new IllegalStateException("Impossibile eliminare il documento: " + filename, e);
+        }
+    }
+
+    /**
+     * Restituisce la lista dei nomi file unici attualmente indicizzati in ChromaDB.
+     * Usa una query generica per recuperare documenti e ne estrae i metadata "source".
+     */
+    public List<String> getIndexedDocuments() {
+        try {
+            List<Document> docs = vectorStore.similaritySearch(
+                    SearchRequest.builder()
+                            .query("documento")
+                            .topK(500)
+                            .similarityThreshold(0.0)
+                            .build()
+            );
+
+            return docs.stream()
+                    .map(doc -> (String) doc.getMetadata().get("source"))
+                    .filter(source -> source != null && !source.isBlank())
+                    .distinct()
+                    .sorted()
+                    .toList();
+
+        } catch (Exception e) {
+            log.error("Errore recupero lista documenti: {}", e.getMessage());
+            return List.of();
+        }
+    }
 }

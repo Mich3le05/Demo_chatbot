@@ -7,15 +7,21 @@ import Loading from './Loading'
 import ReactMarkdown from 'react-markdown'
 
 const ChatBox = () => {
-  const [inputMessage, setInputMessage] = useState('') // Testo digitato dall'utente
+  const [inputMessage, setInputMessage] = useState('')
   const scrollRef = useRef(null)
   const fileInputRef = useRef(null)
 
   const { messages, isLoading, error, sendMessage, clearChat } = useChat()
-  const { uploadedDocument, isUploading, uploadDocument, clearDocument } =
-    useDocumentUpload()
+  const {
+    uploadedDocument,
+    indexedDocuments,
+    isUploading,
+    uploadDocument,
+    deleteDocument,
+    selectDocument,
+    clearDocument,
+  } = useDocumentUpload()
 
-  //EFFECT: auto-scroll quando arrivano nuovi messaggi
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -25,11 +31,8 @@ const ChatBox = () => {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!inputMessage.trim()) return
-
-    // useRag=true solo se c'è un documento caricato
     const useRag = !!uploadedDocument
     const sourceFile = uploadedDocument?.fileName || null
-
     sendMessage(inputMessage, useRag, sourceFile)
     setInputMessage('')
   }
@@ -67,27 +70,72 @@ const ChatBox = () => {
         type="file"
         ref={fileInputRef}
         style={{ display: 'none' }}
+        accept=".pdf,.xlsx,.xls,.docx,.doc,.pptx,.ppt,.csv,.txt"
         onChange={(e) => {
           const file = e.target.files[0]
           if (file) {
             uploadDocument(file)
-            e.target.value = ''
+            e.target.value = '' // ← fix re-upload stesso file
           }
         }}
       />
 
+      {/* Lista documenti indicizzati */}
+      {indexedDocuments.length > 0 && (
+        <div className="px-4 pt-3 pb-1 border-bottom border-secondary">
+          <small className="text-secondary d-block mb-2">
+            Documenti in memoria ({indexedDocuments.length}):
+          </small>
+          <div className="d-flex flex-wrap gap-2">
+            {indexedDocuments.map((doc) => (
+              <Badge
+                key={doc}
+                bg={
+                  uploadedDocument?.fileName === doc ? 'success' : 'secondary'
+                }
+                className="p-2 d-flex align-items-center gap-2"
+                style={{ cursor: 'pointer' }}
+                onClick={() => selectDocument(doc)}
+              >
+                <span
+                  style={{
+                    maxWidth: '180px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {doc}
+                </span>
+                <span
+                  style={{ cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    deleteDocument(doc)
+                  }}
+                  title="Elimina documento"
+                >
+                  &times;
+                </span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
       <Card.Body
         ref={scrollRef}
         className="p-4 flex-grow-1 overflow-auto"
-        style={{ height: '600px' }}
+        style={{ height: '520px' }}
       >
         {messages.length === 0 && !isLoading && (
-          <div className="h-100 d-flex flex-column align-items-center justify-content-center text-center ">
+          <div className="h-100 d-flex flex-column align-items-center justify-content-center text-center">
             <h3 className="text-light mb-2 opacity-75">
               In cosa posso essere utile?
             </h3>
             <p className="text-secondary mb-0">
-              Carica un documento per analizzarlo o fai una domanda
+              {indexedDocuments.length > 0
+                ? `${indexedDocuments.length} documento/i disponibile/i — clicca per attivarlo`
+                : 'Carica un documento per analizzarlo o fai una domanda'}
             </p>
           </div>
         )}
@@ -124,7 +172,7 @@ const ChatBox = () => {
 
       <Card.Footer className="p-3 border-0 bg2">
         {uploadedDocument && (
-          <div className="mb-2 d-flex align-items-center animate-fade-in">
+          <div className="mb-2 d-flex align-items-center">
             <Badge bg="success" className="p-2 d-flex align-items-center gap-2">
               <span>{uploadedDocument.fileName}</span>
               <span
@@ -135,8 +183,8 @@ const ChatBox = () => {
                 &times;
               </span>
             </Badge>
-            <span className="ms-2 text-success opacity-75">
-              Documento caricato
+            <span className="ms-2 text-success opacity-75 small">
+              Documento attivo per la ricerca
             </span>
           </div>
         )}
@@ -146,7 +194,11 @@ const ChatBox = () => {
             <Form.Control
               type="text"
               className="text-light bg3 border-0 rounded-4 chat-input shadow-md px-3"
-              placeholder="Fai una domanda"
+              placeholder={
+                uploadedDocument
+                  ? `Chiedi su "${uploadedDocument.fileName}"`
+                  : 'Fai una domanda'
+              }
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               disabled={isLoading}
@@ -154,16 +206,8 @@ const ChatBox = () => {
             <Button
               type="submit"
               variant="success"
-              className="border-0 py-2 px-3 rounded-4 shadow-md chat-submit"
-              style={{
-                cursor:
-                  isLoading || (!inputMessage.trim() && !uploadedDocument)
-                    ? 'not-allowed'
-                    : 'pointer',
-              }}
-              aria-disabled={
-                isLoading || (!inputMessage.trim() && !uploadedDocument)
-              }
+              className="border-0 py-2 px-3 rounded-4 shadow-md"
+              disabled={isLoading || !inputMessage.trim()}
             >
               Invia
             </Button>

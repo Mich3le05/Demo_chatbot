@@ -5,13 +5,10 @@ import lombok.Data;
 
 @Data
 public class ChatRequest {
-
-    //corpo della richiesta POST /api/chat/message
-
+    // POST /api/chat/message
     @NotBlank(message = "Il messaggio non può essere vuoto")
     private String message;
-
     private String context;
-
     private String sourceFile;
+    private String sessionId;
 }

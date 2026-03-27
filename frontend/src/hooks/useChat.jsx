@@ -1,3 +1,4 @@
+// frontend/src/hooks/useChat.jsx
 import { useState, useRef } from 'react'
 import { chatService } from '../services/chatService'
 
@@ -7,8 +8,11 @@ export const useChat = () => {
   const [error, setError] = useState(null)
 
   const msgCounter = useRef(0)
-  // Tiene traccia dell'AbortController dello stream corrente
   const abortControllerRef = useRef(null)
+
+  // UUID generato una sola volta per tutta la sessione browser
+  // Persiste tra i messaggi, si azzera solo al refresh della pagina
+  const sessionId = useRef(crypto.randomUUID())
 
   const addMessage = (text, sender) => {
     const id = `${Date.now()}-${++msgCounter.current}`
@@ -27,11 +31,9 @@ export const useChat = () => {
   const sendMessage = (userMessage, useRag = false, sourceFile = null) => {
     if (!userMessage.trim()) return
 
-    // Se c'è già uno stream attivo, lo cancella prima di avviarne uno nuovo
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
-    // Crea un nuovo controller per questo stream
     abortControllerRef.current = new AbortController()
     const { signal } = abortControllerRef.current
 
@@ -40,17 +42,13 @@ export const useChat = () => {
     addMessage(userMessage, 'user')
     const botMsgId = addMessage('', 'bot')
 
-    // I callback ignorano i chunk se lo stream è già stato cancellato
     const onChunk = (chunk) => {
       if (!signal.aborted) appendToMessage(botMsgId, chunk)
     }
-
     const onDone = () => {
       if (!signal.aborted) setIsLoading(false)
     }
-
     const onError = (err) => {
-      // AbortError è normale (utente ha cancellato), non mostrare come errore
       if (err.name === 'AbortError') return
       setError(err.message)
       appendToMessage(botMsgId, 'Errore: ' + err.message)
@@ -61,25 +59,39 @@ export const useChat = () => {
       chatService.streamMessageWithRag(
         userMessage,
         sourceFile,
+        sessionId.current,
         onChunk,
         onDone,
         onError,
         signal,
       )
     } else {
-      chatService.streamMessage(userMessage, onChunk, onDone, onError, signal)
+      chatService.streamMessage(
+        userMessage,
+        sessionId.current,
+        onChunk,
+        onDone,
+        onError,
+        signal,
+      )
     }
   }
 
   const clearChat = () => {
-    // Cancella lo stream in corso prima di svuotare la chat
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
+
+    // Notifica il backend di eliminare la memoria della sessione
+    chatService.clearSession(sessionId.current)
+
+    // Genera un nuovo sessionId: la prossima conversazione riparte da zero
+    sessionId.current = crypto.randomUUID()
+
     setMessages([])
     setError(null)
-    setIsLoading(false) // ← importante: resetta anche il loading
+    setIsLoading(false)
   }
 
   return { messages, isLoading, error, sendMessage, clearChat }
