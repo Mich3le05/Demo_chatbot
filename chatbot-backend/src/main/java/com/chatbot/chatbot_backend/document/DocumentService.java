@@ -2,12 +2,13 @@ package com.chatbot.chatbot_backend.document;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.ai.vectorstore.SearchRequest;
 
 import java.io.IOException;
 import java.net.URI;
@@ -15,11 +16,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -35,8 +34,15 @@ public class DocumentService {
     @Value("${app.rag.chunk-overlap}")
     private int chunkOverlap;
 
-    // FIX-3: timeout esplicito — evita che il thread resti bloccato
-    // indefinitamente se Tika Server è irraggiungibile
+    @Value("${app.rag.top-k:4}")
+    private int topK;
+
+    @Value("${app.rag.similarity-threshold:0.38}")
+    private double similarityThreshold;
+
+    @Value("${app.rag.rerank-top-n:3}")
+    private int rerankTopN;
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
@@ -44,70 +50,97 @@ public class DocumentService {
     private final VectorStore vectorStore;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PUBLIC API
-    // ─────────────────────────────────────────────────────────────────────────
 
     public DocumentResponse processFile(MultipartFile file) throws IOException {
         String filename = file.getOriginalFilename();
-        log.debug("Processing file via Tika Server: {}", filename);
+        String requestId = MDC.get("requestId"); // tracing
+        log.info("[{}] Processing file: {}", requestId, filename);
 
         if (isFileAlreadyIndexed(filename)) {
             throw new IllegalStateException(
                     "Il file '" + filename + "' è già presente in memoria. " +
-                            "Rimuoverlo prima di caricarlo nuovamente."
-            );
+                            "Rimuoverlo prima di caricarlo nuovamente.");
         }
 
-        // 1. Estrazione testo via Tika
         String rawText = extractTextViaTika(file);
-
-        // Pulizia artefatti Word/PDF prima del chunking
         String extractedText = cleanTikaOutput(rawText);
-        log.debug("Testo pulito: {} char (raw: {} char)", extractedText.length(), rawText.length());
+        log.info("[{}] Testo estratto: {} char (raw: {})", requestId, extractedText.length(), rawText.length());
 
         if (extractedText.isBlank()) {
-            throw new IllegalStateException(
-                    "Nessun testo estraibile dal file: " + filename
-            );
+            throw new IllegalStateException("Nessun testo estraibile dal file: " + filename);
         }
 
-        // 2. Chunking semantico del testo
         List<String> chunks = chunkText(extractedText);
-        log.debug("Testo diviso in {} chunk", chunks.size());
+        log.info("[{}] Chunk generati: {}", requestId, chunks.size());
 
-        // 3. Salvataggio chunk in ChromaDB con embedding
         saveToVectorStore(chunks, filename, file.getContentType());
-        log.debug("Salvati {} chunk in ChromaDB", chunks.size());
+        log.info("[{}] Salvati {} chunk in ChromaDB per '{}'", requestId, chunks.size(), filename);
 
-        return new DocumentResponse(
-                filename,
-                file.getContentType(),
-                extractedText.trim(),
-                chunks,
-                true
-        );
+        return new DocumentResponse(filename, file.getContentType(), extractedText.trim(), chunks, true);
+    }
+
+    // ── Ricerca con reranking ─────────────────────────────────────────────────
+
+    /**
+     * Esegue similaritySearch e applica un reranking leggero basato sulla
+     * frequenza dei termini della query nel testo del chunk (TF semplificato).
+     * Migliora la precisione senza richiedere un secondo modello.
+     */
+    public List<Document> searchWithRerank(String query, String sourceFile) {
+        SearchRequest.Builder builder = SearchRequest.builder()
+                .query(query)
+                .topK(topK)
+                .similarityThreshold(similarityThreshold);
+
+        if (sourceFile != null && !sourceFile.isBlank()) {
+            builder.filterExpression("source == '" + sanitizeFilterValue(sourceFile) + "'");
+        }
+
+        List<Document> candidates = vectorStore.similaritySearch(builder.build());
+        if (candidates.isEmpty()) return candidates;
+
+        // Reranking: punteggio = similarityScore * (1 + termFrequencyBonus)
+        String[] queryTerms = query.toLowerCase().split("\\s+");
+        List<Document> reranked = candidates.stream()
+                .sorted(Comparator.comparingDouble(doc -> -rerankScore(doc, queryTerms)))
+                .limit(rerankTopN)
+                .collect(Collectors.toList());
+
+        log.debug("Rerank: {} candidati → {} selezionati", candidates.size(), reranked.size());
+        return reranked;
+    }
+
+    private double rerankScore(Document doc, String[] queryTerms) {
+        String text = doc.getText().toLowerCase();
+        // Similarity score già calcolato da Chroma (se disponibile nei metadata)
+        double base = 1.0;
+        Object scoreObj = doc.getMetadata().get("distance");
+        if (scoreObj instanceof Number) {
+            base = 1.0 - ((Number) scoreObj).doubleValue(); // Chroma usa distanza, non similarità
+        }
+
+        long termMatches = Arrays.stream(queryTerms)
+                .filter(term -> term.length() > 3) // ignora stop-words brevi
+                .filter(text::contains)
+                .count();
+
+        double tfBonus = (double) termMatches / Math.max(queryTerms.length, 1);
+        return base * (1.0 + 0.3 * tfBonus);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // PRIVATE HELPERS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Verifica se un file è già indicizzato filtrando per source == filename.
-     * FIX-1 (Security): il filename viene sanitizzato prima di essere interpolato
-     * nella filterExpression per prevenire injection sul parser di ChromaDB.
-     */
     private boolean isFileAlreadyIndexed(String filename) {
         try {
-            String safeFilename = sanitizeFilterValue(filename);
             List<Document> existing = vectorStore.similaritySearch(
                     SearchRequest.builder()
                             .query(filename)
                             .topK(1)
                             .similarityThreshold(0.0)
-                            .filterExpression("source == '" + safeFilename + "'")
-                            .build()
-            );
+                            .filterExpression("source == '" + sanitizeFilterValue(filename) + "'")
+                            .build());
             return !existing.isEmpty();
         } catch (Exception e) {
             log.warn("Impossibile verificare duplicato per '{}': {}", filename, e.getMessage());
@@ -115,50 +148,27 @@ public class DocumentService {
         }
     }
 
-    /**
-     * Estrae il testo grezzo dal file tramite Apache Tika Server.
-     * FIX-3: timeout di 30s sulla singola richiesta per evitare blocchi prolungati.
-     */
     private String extractTextViaTika(MultipartFile file) throws IOException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(tikaServerUrl + "/tika"))
                 .header("Accept", "text/plain")
                 .header("Content-Type", "application/octet-stream")
-                .timeout(Duration.ofSeconds(30)) // FIX-3: timeout per-request
+                .timeout(Duration.ofSeconds(30))
                 .PUT(HttpRequest.BodyPublishers.ofByteArray(file.getBytes()))
                 .build();
 
         try {
-            HttpResponse<String> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString()
-            );
-
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new IllegalStateException(
-                        "Tika Server error - status: " + response.statusCode()
-                );
+                throw new IllegalStateException("Tika Server error - status: " + response.statusCode());
             }
-
-            log.debug("Tika extraction OK: {}", file.getOriginalFilename());
             return response.body();
-
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Richiesta a Tika Server interrotta", e);
         }
     }
 
-    /**
-     * Rimuove gli artefatti prodotti da Tika sui file Word/PDF:
-     *   - tag immagine:  [image: qualcosa]
-     *   - bookmark Word: [bookmark: _Toc...]
-     *   - watermark AI:  "AI-generated content may be incorrect."
-     *   - righe vuote multiple e righe prive di contenuto alfanumerico
-     *
-     * Riduce il token count del prompt di circa il 30%, migliorando
-     * la qualità del retrieval e la velocità del prompt processing.
-     */
     private String cleanTikaOutput(String raw) {
         return raw
                 .replaceAll("\\[image:[^]]*]", "")
@@ -169,18 +179,8 @@ public class DocumentService {
                 .strip();
     }
 
-    /**
-     * Chunking semantico a cascata:
-     *   1. Divide per paragrafo (\n\n)
-     *   2. Se un paragrafo supera chunkSize, lo divide per frasi (. ! ?)
-     *   3. Aggrega le unità piccole in chunk fino a chunkSize con overlap semantico
-     */
     private List<String> chunkText(String text) {
-        String normalized = text
-                .replaceAll("\r\n", "\n")
-                .replaceAll("\n{3,}", "\n\n")
-                .strip();
-
+        String normalized = text.replaceAll("\r\n", "\n").replaceAll("\n{3,}", "\n\n").strip();
         List<String> paragraphs = Arrays.stream(normalized.split("\n\n"))
                 .map(String::strip)
                 .filter(p -> !p.isBlank())
@@ -195,14 +195,9 @@ public class DocumentService {
                 sentences.addAll(Arrays.asList(parts));
             }
         }
-
         return aggregateIntoChunks(sentences);
     }
 
-    /**
-     * Aggrega le unità di testo in chunk con overlap semantico basato
-     * su frasi complete (non su caratteri arbitrari).
-     */
     private List<String> aggregateIntoChunks(List<String> units) {
         List<String> chunks = new ArrayList<>();
         StringBuilder current = new StringBuilder();
@@ -210,123 +205,99 @@ public class DocumentService {
 
         for (String unit : units) {
             boolean wouldExceed = (current.length() + unit.length() + 1) > chunkSize;
-
             if (wouldExceed && !current.isEmpty()) {
-                // 1. Salva il chunk corrente
                 String chunk = current.toString().strip();
-                if (!chunk.isBlank()) {
-                    chunks.add(chunk);
-                }
+                if (!chunk.isBlank()) chunks.add(chunk);
 
-                // 2. Calcola quante unità tenere come overlap
-                //    scorrendo all'indietro finché non accumulo chunkOverlap caratteri
                 int overlapChars = 0;
-                int overlapStart = currentUnits.size(); // parte dalla fine
-
+                int overlapStart = currentUnits.size();
                 for (int i = currentUnits.size() - 1; i >= 0; i--) {
                     overlapChars += currentUnits.get(i).length();
                     overlapStart = i;
-                    if (overlapChars >= chunkOverlap) {
-                        break;
-                    }
+                    if (overlapChars >= chunkOverlap) break;
                 }
-
-                // 3. Ricostruisce current con il for classico (no lambda → no errore)
                 current = new StringBuilder();
                 for (int i = overlapStart; i < currentUnits.size(); i++) {
                     current.append(currentUnits.get(i)).append(" ");
                 }
-
-                // 4. Aggiorna la lista delle unità correnti tenendo solo l'overlap
                 currentUnits = new ArrayList<>(currentUnits.subList(overlapStart, currentUnits.size()));
             }
-
             current.append(unit).append(" ");
             currentUnits.add(unit);
         }
 
-        // Ultimo chunk residuo
         String last = current.toString().strip();
-        if (!last.isBlank()) {
-            chunks.add(last);
-        }
-
+        if (!last.isBlank()) chunks.add(last);
         return chunks;
     }
 
     /**
-     * Converte i chunk in Document objects con metadata e li salva in ChromaDB.
+     * Metadata arricchiti: aggiunge chunkIndex, totalChunks, uploadedAt.
+     * Permette di filtrare per posizione e di mostrare la provenienza nella UI.
      */
     private void saveToVectorStore(List<String> chunks, String filename, String contentType) {
-        List<Document> documents = chunks.stream()
-                .map(chunk -> new Document(
-                        chunk,
-                        Map.of(
-                                "source",   filename,
-                                "chunkId",  UUID.randomUUID().toString(),
-                                "fileType", contentType != null ? contentType : "unknown"
-                        )
-                ))
-                .toList();
+        String uploadedAt = Instant.now().toString();
+        int total = chunks.size();
+
+        List<Document> documents = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("source",       filename);
+            metadata.put("chunkId",      UUID.randomUUID().toString());
+            metadata.put("chunkIndex",   i);                    // posizione nel documento
+            metadata.put("totalChunks",  total);               // totale chunk del file
+            metadata.put("fileType",     contentType != null ? contentType : "unknown");
+            metadata.put("uploadedAt",   uploadedAt);          // timestamp upload
+
+            documents.add(new Document(chunks.get(i), metadata));
+        }
 
         vectorStore.add(documents);
     }
 
     /**
-     * FIX-1 (Security): sanitizza i valori interpolati nelle filterExpression
-     * di ChromaDB, che usa un parser simil-SQL sensibile agli apici singoli.
-     * Escape dell'apice singolo → \' per prevenire injection sul filtro.
+     * Fix sicurezza: escape sia apice singolo che backslash.
      */
     private String sanitizeFilterValue(String value) {
         if (value == null) return "";
-        return value.replace("'", "\\'");
+        return value.replace("\\", "\\\\").replace("'", "\\'");
     }
 
     public void deleteDocument(String filename) {
+        String requestId = MDC.get("requestId");
         try {
-            String safeFilename = sanitizeFilterValue(filename);
-
-            // Recupera gli ID dei chunk da eliminare
             List<Document> toDelete = vectorStore.similaritySearch(
                     SearchRequest.builder()
                             .query(filename)
-                            .topK(1000)               // prende tutti i chunk del file
-                            .similarityThreshold(0.0) // qualsiasi similarità
-                            .filterExpression("source == '" + safeFilename + "'")
-                            .build()
-            );
+                            .topK(1000)
+                            .similarityThreshold(0.0)
+                            .filterExpression("source == '" + sanitizeFilterValue(filename) + "'")
+                            .build());
 
             if (toDelete.isEmpty()) {
-                log.warn("Nessun chunk trovato per: {}", filename);
+                log.warn("[{}] Nessun chunk trovato per: {}", requestId, filename);
                 return;
             }
 
-            List<String> ids = toDelete.stream()
-                    .map(Document::getId)
-                    .toList();
-
+            List<String> ids = toDelete.stream().map(Document::getId).toList();
             vectorStore.delete(ids);
-            log.info("Eliminati {} chunk per: {}", ids.size(), filename);
+            log.info("[{}] Eliminati {} chunk per: {}", requestId, ids.size(), filename);
 
         } catch (Exception e) {
-            log.error("Errore eliminazione documento '{}': {}", filename, e.getMessage());
+            log.error("[{}] Errore eliminazione '{}': {}", requestId, filename, e.getMessage());
             throw new IllegalStateException("Impossibile eliminare il documento: " + filename, e);
         }
     }
 
-    /**
-     * Restituisce la lista dei nomi file unici attualmente indicizzati in ChromaDB.
-     * Usa una query generica per recuperare documenti e ne estrae i metadata "source".
-     */
     public List<String> getIndexedDocuments() {
         try {
+            // FIX: usa topK alto + similarityThreshold 0.0 per recuperare tutti i chunk
             List<Document> docs = vectorStore.similaritySearch(
                     SearchRequest.builder()
-                            .query("documento")
+                            .query("a") // query minima, vogliamo tutti i doc
                             .topK(500)
                             .similarityThreshold(0.0)
-                            .build()
-            );
+                            .build());
 
             return docs.stream()
                     .map(doc -> (String) doc.getMetadata().get("source"))

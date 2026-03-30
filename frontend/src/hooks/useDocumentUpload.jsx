@@ -1,5 +1,5 @@
 // frontend/src/hooks/useDocumentUpload.jsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { documentService } from '../services/documentService'
 import { toast } from 'react-toastify'
 
@@ -9,16 +9,18 @@ export const useDocumentUpload = () => {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
 
-  useEffect(() => {
-    refreshList()
-  }, [])
-
-  const refreshList = () => {
+  // FIX: useCallback stabilizza il riferimento della funzione tra i render,
+  // così useEffect può includerla nelle dipendenze senza loop infiniti
+  const refreshList = useCallback(() => {
     documentService
       .listDocuments()
       .then(setIndexedDocuments)
       .catch(() => setIndexedDocuments([]))
-  }
+  }, []) // nessuna dipendenza esterna — documentService è stabile
+
+  useEffect(() => {
+    refreshList()
+  }, [refreshList]) // ESLint è soddisfatto, nessun loop perché refreshList è stabile
 
   const uploadDocument = (file) => {
     setIsUploading(true)
@@ -51,8 +53,6 @@ export const useDocumentUpload = () => {
       .catch((err) => toast.error('Errore eliminazione: ' + err.message))
   }
 
-  // ← funzione mancante: permette a ChatBox di attivare un documento
-  // già indicizzato senza doverlo ricaricare
   const selectDocument = (filename) => {
     setUploadedDocument({ fileName: filename })
   }
@@ -69,7 +69,7 @@ export const useDocumentUpload = () => {
     uploadError,
     uploadDocument,
     deleteDocument,
-    selectDocument, // ← aggiunto
+    selectDocument,
     clearDocument,
   }
 }

@@ -15,11 +15,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ConversationMemory {
 
-    // Ogni sessionId ha la propria storia di messaggi
     private final Map<String, List<Message>> sessions = new ConcurrentHashMap<>();
 
-    // Max scambi in memoria: 10 user + 10 assistant = 20 messaggi
-    // Evita context overflow su Qwen2.5-3B con context 8192
+    /**
+     * 10 scambi (user+assistant) = 20 messaggi totali.
+     * DEVE essere pari per garantire integrità delle coppie.
+     */
     private static final int MAX_MESSAGES = 20;
 
     public void addUserMessage(String sessionId, String text) {
@@ -31,8 +32,6 @@ public class ConversationMemory {
         getOrCreate(sessionId).add(new AssistantMessage(text));
     }
 
-    // Restituisce la storia SENZA l'ultimo messaggio utente
-    // (quello viene aggiunto separatamente dal ChatService)
     public List<Message> getHistory(String sessionId) {
         return List.copyOf(getOrCreate(sessionId));
     }
@@ -51,11 +50,21 @@ public class ConversationMemory {
         return sessions.computeIfAbsent(sessionId, k -> new ArrayList<>());
     }
 
-    // Rimuove i messaggi più vecchi quando si supera il limite
+    /**
+     * FIX: rimuove sempre 2 messaggi (1 coppia user/assistant) per mantenere
+     * la coerenza della conversazione. Il vecchio codice rimuoveva 1 messaggio
+     * alla volta, rischiando di lasciare un assistant senza il suo user.
+     */
     private void trim(String sessionId) {
         List<Message> history = sessions.get(sessionId);
         while (history.size() > MAX_MESSAGES) {
-            history.remove(0);
+            // Rimuove i 2 messaggi più vecchi (posizioni 0 e 0 dopo la prima rimozione)
+            if (history.size() >= 2) {
+                history.remove(0); // UserMessage
+                history.remove(0); // AssistantMessage
+            } else {
+                history.remove(0);
+            }
         }
     }
 }

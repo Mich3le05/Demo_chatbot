@@ -20,7 +20,7 @@ export const chatService = {
       body: JSON.stringify({ message, sessionId }),
       signal,
     })
-      .then((res) => _consumeStream(res, onChunk, onDone))
+      .then((res) => _consumeStream(res, onChunk, onDone, onError))
       .catch(onError)
   },
 
@@ -39,14 +39,29 @@ export const chatService = {
       body: JSON.stringify({ message, sourceFile, sessionId }),
       signal,
     })
-      .then((res) => _consumeStream(res, onChunk, onDone))
+      .then((res) => _consumeStream(res, onChunk, onDone, onError))
       .catch(onError)
   },
 }
 
-async function _consumeStream(res, onChunk, onDone) {
+/**
+ * FIX: gestisce esplicitamente status HTTP != 200.
+ * Prima il codice chiamava onDone() silenziosamente su errori HTTP,
+ * lasciando il messaggio vuoto senza feedback all'utente.
+ */
+async function _consumeStream(res, onChunk, onDone, onError) {
   if (!res.ok) {
-    onDone()
+    // Prova a leggere il body dell'errore (JSON dal backend)
+    try {
+      const errorData = await res.json()
+      onError(
+        new Error(
+          errorData.details || errorData.message || `Errore HTTP ${res.status}`,
+        ),
+      )
+    } catch {
+      onError(new Error(`Errore HTTP ${res.status}`))
+    }
     return
   }
 
@@ -54,15 +69,23 @@ async function _consumeStream(res, onChunk, onDone) {
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
-    for (const line of lines) {
-      if (line.startsWith('data:')) onChunk(line.slice(5))
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() // l'ultima riga potrebbe essere incompleta
+      for (const line of lines) {
+        if (line.startsWith('data:')) onChunk(line.slice(5))
+      }
     }
+    // Processa eventuale residuo nel buffer
+    if (buffer.startsWith('data:')) onChunk(buffer.slice(5))
+  } catch (err) {
+    onError(err)
+    return
   }
+
   onDone()
 }

@@ -2,6 +2,26 @@
 import { useState, useRef } from 'react'
 import { chatService } from '../services/chatService'
 
+/**
+ * FIX: crypto.randomUUID() è disponibile solo su HTTPS o localhost.
+ * Su HTTP con IP di rete (es. 192.168.x.x) il browser la blocca.
+ * Questo fallback genera un UUID v4 compatibile senza dipendenze esterne.
+ */
+function generateUUID() {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID()
+  }
+  // Fallback manuale UUID v4
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 export const useChat = () => {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
@@ -10,9 +30,7 @@ export const useChat = () => {
   const msgCounter = useRef(0)
   const abortControllerRef = useRef(null)
 
-  // UUID generato una sola volta per tutta la sessione browser
-  // Persiste tra i messaggi, si azzera solo al refresh della pagina
-  const sessionId = useRef(crypto.randomUUID())
+  const sessionId = useRef(generateUUID()) // usa il fallback sicuro
 
   const addMessage = (text, sender) => {
     const id = `${Date.now()}-${++msgCounter.current}`
@@ -83,11 +101,9 @@ export const useChat = () => {
       abortControllerRef.current = null
     }
 
-    // Notifica il backend di eliminare la memoria della sessione
     chatService.clearSession(sessionId.current)
 
-    // Genera un nuovo sessionId: la prossima conversazione riparte da zero
-    sessionId.current = crypto.randomUUID()
+    sessionId.current = generateUUID() // usa il fallback sicuro
 
     setMessages([])
     setError(null)
