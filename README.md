@@ -4,10 +4,11 @@ Sistema di chatbot AI locale
 
 ## 🏗️ Architettura
 
-- **Backend**: Spring Boot (Java 21) + Spring AI
-- **Frontend**: React + Vite + Bootstrap 
-- **AI Engine**: LM Studio
+* **Backend**: Spring Boot (Java 21) + Spring AI
+* **Frontend**: React + Vite + Bootstrap
+* **AI Engine**: LM Studio
 
 ## 👤 Autore
 
 Michele Mandanici(https://github.com/Mich3le05)
+

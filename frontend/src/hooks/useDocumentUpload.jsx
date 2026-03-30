@@ -1,3 +1,4 @@
+// frontend/src/hooks/useDocumentUpload.jsx
 import { useState, useEffect } from 'react'
 import { documentService } from '../services/documentService'
 import { toast } from 'react-toastify'
@@ -8,7 +9,6 @@ export const useDocumentUpload = () => {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
 
-  // Carica la lista dei documenti già indicizzati all'avvio
   useEffect(() => {
     refreshList()
   }, [])
@@ -42,7 +42,6 @@ export const useDocumentUpload = () => {
     documentService
       .deleteDocument(filename)
       .then(() => {
-        // Se era il documento attivo, deselezionalo
         if (uploadedDocument?.fileName === filename) {
           setUploadedDocument(null)
         }
@@ -50,6 +49,12 @@ export const useDocumentUpload = () => {
         refreshList()
       })
       .catch((err) => toast.error('Errore eliminazione: ' + err.message))
+  }
+
+  // ← funzione mancante: permette a ChatBox di attivare un documento
+  // già indicizzato senza doverlo ricaricare
+  const selectDocument = (filename) => {
+    setUploadedDocument({ fileName: filename })
   }
 
   const clearDocument = () => {
@@ -64,6 +69,7 @@ export const useDocumentUpload = () => {
     uploadError,
     uploadDocument,
     deleteDocument,
+    selectDocument, // ← aggiunto
     clearDocument,
   }
 }
